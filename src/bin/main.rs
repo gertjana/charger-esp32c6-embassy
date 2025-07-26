@@ -7,34 +7,18 @@
 )]
 
 use embassy_executor::Spawner;
-use embassy_time::{
-    Duration, 
-    Timer
-};
+use embassy_time::{Duration, Timer};
 use esp32c6_embassy_charged::{
-    charger::{
-        Charger, 
-        ChargerInput, 
-        ChargerState}, 
-        mk_static, 
-        network::{self, NetworkStack}
-    };
-use log::info;
+    charger::{Charger, ChargerInput, ChargerState},
+    mk_static,
+    network::{self, NetworkStack},
+};
 use esp_hal::{
     clock::CpuClock,
-    gpio::{
-        Input, 
-        InputConfig, 
-        Level, 
-        Output, 
-        Pull
-    },
-    timer::{
-        systimer::SystemTimer,
-        timg::TimerGroup
-    },
+    gpio::{Input, InputConfig, Level, Output, Pull},
+    timer::{systimer::SystemTimer, timg::TimerGroup},
 };
-
+use log::info;
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -49,7 +33,7 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
 // - control a display (i2c SSD1306)
 // - MQTT client (done)
 //    - Send and Receive Queues
-// - OCPP Messages 
+// - OCPP Messages
 
 extern crate alloc;
 
@@ -76,36 +60,46 @@ async fn main(spawner: Spawner) {
     let rng = esp_hal::rng::Rng::new(peripherals.RNG);
     let timer1 = TimerGroup::new(peripherals.TIMG0);
 
-
     // GPIO Setup
     let onboard_led_pin = Output::new(peripherals.GPIO15, Level::Low, Default::default());
 
-    let cable_switch = Input::new(peripherals.GPIO0, InputConfig::default().with_pull(Pull::Up));
+    let cable_switch = Input::new(
+        peripherals.GPIO0,
+        InputConfig::default().with_pull(Pull::Up),
+    );
 
-    let swipe_switch = Input::new(peripherals.GPIO1, InputConfig::default().with_pull(Pull::Up));
+    let swipe_switch = Input::new(
+        peripherals.GPIO1,
+        InputConfig::default().with_pull(Pull::Up),
+    );
 
     let charger_relay = Output::new(peripherals.GPIO2, Level::Low, Default::default());
 
     let charger = mk_static!(Charger, Charger::new());
     charger.set_state(ChargerState::Available).await;
 
-
     info!("Initializing network stack...");
     let network = network::NetworkStack::init(&spawner, timer1, rng, peripherals.WIFI).await;
     let network = mk_static!(NetworkStack, network);
     network.wait_for_ip().await;
-    
 
     // Start all the different hardware relatedtasks
-    spawner.spawn(charger_led_task(charger, onboard_led_pin)).ok();
-    spawner.spawn(charger_cable_task(charger, cable_switch)).ok();
-    spawner.spawn(charger_swipe_task(charger, swipe_switch)).ok();
-    spawner.spawn(charger_relay_task(charger, charger_relay)).ok();
+    spawner
+        .spawn(charger_led_task(charger, onboard_led_pin))
+        .ok();
+    spawner
+        .spawn(charger_cable_task(charger, cable_switch))
+        .ok();
+    spawner
+        .spawn(charger_swipe_task(charger, swipe_switch))
+        .ok();
+    spawner
+        .spawn(charger_relay_task(charger, charger_relay))
+        .ok();
 
     // Start the network related tasks
 
     spawner.spawn(heartbeat_task(network)).ok();
-
 
     let mut old_state = charger.get_state().await;
     loop {
@@ -134,12 +128,12 @@ async fn charger_led_task(charger: &'static Charger, mut led_pin: Output<'static
 #[embassy_executor::task]
 async fn charger_cable_task(charger: &'static Charger, mut button: Input<'static>) {
     info!("Task started: Charger cable Detector");
-        
+
     loop {
         button.wait_for_any_edge().await;
-        
+
         Timer::after(Duration::from_millis(100)).await;
-        
+
         if button.is_low() {
             charger.transition(ChargerInput::CableConnected).await;
         } else {
@@ -155,7 +149,7 @@ async fn charger_swipe_task(charger: &'static Charger, mut swipe_switch: Input<'
     loop {
         swipe_switch.wait_for_falling_edge().await;
         Timer::after(Duration::from_millis(100)).await;
-        
+
         charger.transition(ChargerInput::SwipeDetected).await;
     }
 }
@@ -173,13 +167,15 @@ async fn charger_relay_task(charger: &'static Charger, mut relay: Output<'static
     }
 }
 
-
 #[embassy_executor::task]
 async fn heartbeat_task(network: &'static NetworkStack) {
     info!("Task started: Network Heartbeat");
     loop {
         let message = "[2,\"1\",\"Heartbeat\",{}]".as_bytes();
-        match network.send_mqtt_message("35.159.5.228", "/esp32c6-1/heartbeat", message).await {
+        match network
+            .send_mqtt_message("35.159.5.228", "/esp32c6-1/heartbeat", message)
+            .await
+        {
             Ok(()) => info!("Heartbeat message sent successfully"),
             Err(_) => info!("Failed to send heartbeat message"),
         }

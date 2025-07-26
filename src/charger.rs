@@ -1,7 +1,7 @@
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
-use log::info;
 use core::cell::RefCell;
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use embassy_time::{Duration, Timer};
+use log::info;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChargerState {
@@ -48,9 +48,7 @@ impl ChargerState {
             Self::Charging => "Charging",
         }
     }
-
 }
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChargerInput {
@@ -59,9 +57,14 @@ pub enum ChargerInput {
     SwipeDetected,
 }
 
-
 pub struct Charger {
     state: Mutex<CriticalSectionRawMutex, RefCell<ChargerState>>,
+}
+
+impl Default for Charger {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Charger {
@@ -87,36 +90,34 @@ impl Charger {
         let current_state = *state_guard.borrow();
 
         let new_state = match (current_state, charger_input) {
-            (ChargerState::Occupied, ChargerInput::SwipeDetected) => {
-                Some(ChargerState::Charging)
-            }
-            (ChargerState::Charging, ChargerInput::SwipeDetected) => {
-                Some(ChargerState::Occupied)
-            }
+            (ChargerState::Occupied, ChargerInput::SwipeDetected) => Some(ChargerState::Charging),
+            (ChargerState::Charging, ChargerInput::SwipeDetected) => Some(ChargerState::Occupied),
             (ChargerState::Occupied, ChargerInput::CableDisconnected) => {
                 Some(ChargerState::Available)
             }
-            (ChargerState::Available, ChargerInput::CableConnected) => {
-                Some(ChargerState::Occupied)
-            }
-            (ChargerState::Charging, ChargerInput::CableDisconnected) => {
-                Some(ChargerState::Error)
-            }
+            (ChargerState::Available, ChargerInput::CableConnected) => Some(ChargerState::Occupied),
+            (ChargerState::Charging, ChargerInput::CableDisconnected) => Some(ChargerState::Error),
             (ChargerState::Error, _) => {
                 info!("Recovering from error state, resetting in 5 seconds...");
                 Timer::after(Duration::from_secs(5)).await;
                 Some(ChargerState::Available)
             }
-            _ => None
+            _ => None,
         };
 
         if let Some(state) = new_state {
-            info!("Transitioned from {} -> {}", current_state.as_str(), state.as_str());
+            info!(
+                "Transitioned from {} -> {}",
+                current_state.as_str(),
+                state.as_str()
+            );
             *state_guard.borrow_mut() = state;
         } else {
-            info!("No valid transition for input: {} with {:?}", current_state.as_str(), charger_input);
+            info!(
+                "No valid transition for input: {} with {:?}",
+                current_state.as_str(),
+                charger_input
+            );
         }
     }
-
-
 }
