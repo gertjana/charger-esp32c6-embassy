@@ -1,4 +1,4 @@
-use crate::mk_static;
+use crate::{config::Config, mk_static};
 use core::{
     default::Default,
     matches,
@@ -22,11 +22,9 @@ use rust_mqtt::{
     utils::rng_generator::CountingRng,
 };
 
-const SSID: &str = env!("SSID");
-const PASSWORD: &str = env!("PASSWORD");
-
 pub struct NetworkStack {
     pub stack: &'static embassy_net::Stack<'static>,
+    pub app_config: Config,
 }
 
 impl NetworkStack {
@@ -35,6 +33,7 @@ impl NetworkStack {
         timer1: TimerGroup<'static, esp_hal::peripherals::TIMG0<'static>>,
         mut rng: esp_hal::rng::Rng,
         wifi_peripheral: esp_hal::peripherals::WIFI<'static>,
+        app_config: Config,
     ) -> Self {
         // Initialize WiFi controller
         let esp_wifi_ctrl = &*mk_static!(
@@ -61,12 +60,17 @@ impl NetworkStack {
         // Store stack in static memory
         let stack = mk_static!(embassy_net::Stack<'static>, stack);
 
+        // Store app config in static memory for task access
+        let static_config = mk_static!(Config, app_config.clone());
+
         // Spawn network tasks
         spawner.spawn(net_task(runner)).ok();
-        spawner.spawn(connection_task(wifi_controller)).ok();
+        spawner
+            .spawn(connection_task(wifi_controller, static_config))
+            .ok();
 
         info!("WiFi controller started");
-        NetworkStack { stack }
+        NetworkStack { stack, app_config }
     }
 
     pub async fn wait_for_ip(&self) {
@@ -166,7 +170,7 @@ impl NetworkStack {
 }
 
 #[embassy_executor::task]
-async fn connection_task(mut controller: WifiController<'static>) {
+async fn connection_task(mut controller: WifiController<'static>, config: &'static Config) {
     loop {
         if esp_wifi::wifi::wifi_state() == WifiState::StaConnected {
             // wait until we're no longer connected
@@ -175,8 +179,8 @@ async fn connection_task(mut controller: WifiController<'static>) {
         }
         if !matches!(controller.is_started(), Ok(true)) {
             let client_config = Configuration::Client(ClientConfiguration {
-                ssid: SSID.into(),
-                password: PASSWORD.into(),
+                ssid: config.wifi_ssid.into(),
+                password: config.wifi_password.into(),
                 ..Default::default()
             });
             controller.set_configuration(&client_config).unwrap();

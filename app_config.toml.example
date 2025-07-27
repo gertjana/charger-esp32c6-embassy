@@ -1,0 +1,14 @@
+# ESP32-C6 Charger Configuration Example
+# Copy this file to app_config.toml and update with your actual values
+
+[wifi]
+ssid = "YOUR_WIFI_SSID"
+password = "YOUR_WIFI_PASSWORD"
+
+[charger]
+name = "esp32c6-charger-001"
+
+[mqtt]
+broker = "broker.hivemq.com"
+port = 1883
+client_id = "esp32c6-charger-001"

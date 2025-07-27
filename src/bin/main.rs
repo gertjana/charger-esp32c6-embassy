@@ -7,10 +7,13 @@
 )]
 
 use alloc::string::ToString;
+use core::fmt::Write;
+use core::sync::atomic::{AtomicU32, Ordering};
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
 use esp32c6_embassy_charged::{
     charger::{Charger, ChargerInput, ChargerState},
+    config::Config,
     mk_static,
     network::{self, NetworkStack},
 };
@@ -24,6 +27,15 @@ use ocpp_rs::v16::{
     call::{Action, Call, Heartbeat},
     parse::{self, Message},
 };
+
+/// Thread-safe static counter for OCPP message IDs
+static OCPP_MESSAGE_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
+fn next_ocpp_message_id() -> heapless::String<32> {
+    let next = OCPP_MESSAGE_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let mut data = heapless::String::new();
+    let _ = write!(data, "{next}");
+    data
+}
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -83,8 +95,13 @@ async fn main(spawner: Spawner) {
     let charger = mk_static!(Charger, Charger::new());
     charger.set_state(ChargerState::Available).await;
 
+    // Load configuration from TOML file with environment variable overrides
+    let config = Config::from_config();
+    info!("Charger configuration loaded: {}", config.charger_name);
+
     info!("Initializing network stack...");
-    let network = network::NetworkStack::init(&spawner, timer1, rng, peripherals.WIFI).await;
+    let network =
+        network::NetworkStack::init(&spawner, timer1, rng, peripherals.WIFI, config).await;
     let network = mk_static!(NetworkStack, network);
     network.wait_for_ip().await;
 
@@ -175,25 +192,29 @@ async fn charger_relay_task(charger: &'static Charger, mut relay: Output<'static
 #[embassy_executor::task]
 async fn heartbeat_task(network: &'static NetworkStack) {
     info!("Task started: Network Heartbeat");
-    let broker_ip = network.resolve_dns("broker.hivemq.com").await.unwrap();
+    let broker_ip = network
+        .resolve_dns(network.app_config.mqtt_broker)
+        .await
+        .unwrap();
+    let topic = network.app_config.charger_topic();
+
     loop {
-        // Create OCPP 1.6 Heartbeat Call message using ocpp_rs structs for validation
+        // Create OCPP 1.6 Heartbeat Call message using thread-safe message ID
         let heartbeat_call = Message::Call(Call::new(
-            "heartbeat_001".into(),
+            next_ocpp_message_id().to_string(),
             Action::Heartbeat(Heartbeat {}),
         ));
 
         let message = parse::serialize_message(&heartbeat_call).unwrap();
 
         match network
-            .send_mqtt_message(
-                &broker_ip.to_string(),
-                "/esp32c6-1/heartbeat",
-                message.as_bytes(),
-            )
+            .send_mqtt_message(&broker_ip.to_string(), topic.as_str(), message.as_bytes())
             .await
         {
-            Ok(()) => info!("OCPP Heartbeat message sent successfully"),
+            Ok(()) => info!(
+                "OCPP Heartbeat message sent successfully to {}",
+                topic.as_str()
+            ),
             Err(_) => info!("Failed to send OCPP Heartbeat message"),
         }
 
