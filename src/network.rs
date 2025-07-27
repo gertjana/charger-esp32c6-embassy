@@ -8,13 +8,14 @@ use core::{
 };
 use embassy_executor::Spawner;
 use embassy_net::{tcp::TcpSocket, IpAddress, StackResources};
+
 use embassy_time::{Duration, Timer};
 use esp_hal::timer::timg::TimerGroup;
 use esp_wifi::{
     wifi::{ClientConfiguration, Configuration, WifiController, WifiEvent, WifiState},
     EspWifiController,
 };
-use log::info;
+use log::{error, info, warn};
 use rust_mqtt::{
     client::{client::MqttClient, client_config::ClientConfig},
     packet::v5::{publish_packet::QualityOfService::QoS1, reason_codes::ReasonCode},
@@ -89,6 +90,24 @@ impl NetworkStack {
 
     pub fn is_connected(&self) -> bool {
         self.stack.config_v4().is_some()
+    }
+
+    pub async fn resolve_dns(&self, hostname: &str) -> Option<IpAddress> {
+        let result = self
+            .stack
+            .dns_query(hostname, embassy_net::dns::DnsQueryType::A)
+            .await;
+        match result {
+            Ok(ips) if !ips.is_empty() => Some(ips[0]),
+            Ok(_) => {
+                warn!("DNS resolved {hostname} but no IPs found");
+                None
+            }
+            Err(_) => {
+                error!("Failed to resolve DNS for {hostname}");
+                None
+            }
+        }
     }
 
     pub fn create_mqtt_config(&self) -> ClientConfig<'static, 5, CountingRng> {

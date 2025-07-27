@@ -6,6 +6,7 @@
     holding buffers for the duration of a data transfer."
 )]
 
+use alloc::string::ToString;
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
 use esp32c6_embassy_charged::{
@@ -19,6 +20,9 @@ use esp_hal::{
     timer::{systimer::SystemTimer, timg::TimerGroup},
 };
 use log::info;
+use ocpp_rs::v16::{call::{Action, Call, Heartbeat}, parse::{self, Message}};
+
+
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -170,14 +174,20 @@ async fn charger_relay_task(charger: &'static Charger, mut relay: Output<'static
 #[embassy_executor::task]
 async fn heartbeat_task(network: &'static NetworkStack) {
     info!("Task started: Network Heartbeat");
+    let broker_ip = network.resolve_dns("broker.hivemq.com").await.unwrap();
     loop {
-        let message = "[2,\"1\",\"Heartbeat\",{}]".as_bytes();
+        // Create OCPP 1.6 Heartbeat Call message using ocpp_rs structs for validation
+        let heartbeat_call = Message::Call(
+            Call::new("heartbeat_001".into(), Action::Heartbeat(Heartbeat {})));
+
+        let message = parse::serialize_message(&heartbeat_call).unwrap();
+
         match network
-            .send_mqtt_message("35.159.5.228", "/esp32c6-1/heartbeat", message)
+            .send_mqtt_message(&broker_ip.to_string(), "/esp32c6-1/heartbeat", message.as_bytes())
             .await
         {
-            Ok(()) => info!("Heartbeat message sent successfully"),
-            Err(_) => info!("Failed to send heartbeat message"),
+            Ok(()) => info!("OCPP Heartbeat message sent successfully"),
+            Err(_) => info!("Failed to send OCPP Heartbeat message"),
         }
 
         Timer::after(Duration::from_secs(30)).await;
