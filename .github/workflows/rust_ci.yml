@@ -37,5 +37,7 @@ jobs:
           components: rust-src, rustfmt, clippy
       - name: Enable caching
         uses: Swatinem/rust-cache@v2
+      - name: Copy config
+        run: cp app_config.toml.example app_config.toml
       - name: Run command
         run: cargo ${{ matrix.action.command }} ${{ matrix.action.args }}
