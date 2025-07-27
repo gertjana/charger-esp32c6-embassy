@@ -21,7 +21,7 @@ pub struct Config {
 /// Simple TOML value extraction functions
 fn extract_toml_string<'a>(content: &'a str, section: &str, key: &str) -> Option<&'a str> {
     // Find the section
-    let section_marker = format!("[{}]", section);
+    let section_marker = format!("[{section}]");
     let section_start = content.find(&section_marker)?;
 
     // Get content after section header
