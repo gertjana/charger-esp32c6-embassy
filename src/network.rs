@@ -8,8 +8,6 @@ use core::{
 };
 use embassy_executor::Spawner;
 use embassy_net::{tcp::TcpSocket, IpAddress, StackResources};
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
-
 use embassy_time::{Duration, Timer};
 use esp_hal::timer::timg::TimerGroup;
 use esp_wifi::{
@@ -26,7 +24,6 @@ use rust_mqtt::{
 pub struct NetworkStack {
     pub stack: &'static embassy_net::Stack<'static>,
     pub app_config: Config,
-    mqtt_mutex: Mutex<CriticalSectionRawMutex, ()>,
 }
 
 impl NetworkStack {
@@ -72,11 +69,7 @@ impl NetworkStack {
             .ok();
 
         info!("WiFi controller started");
-        NetworkStack {
-            stack,
-            app_config,
-            mqtt_mutex: Mutex::new(()),
-        }
+        NetworkStack { stack, app_config }
     }
 
     pub async fn wait_for_ip(&self) {
@@ -131,10 +124,7 @@ impl NetworkStack {
 
     /// Create and use an MQTT client to send a single message
     /// This is a simplified approach that creates a fresh connection for each message
-    /// Uses a mutex to prevent concurrent MQTT operations that could cause deadlocks
     pub async fn send_mqtt_message(&self, message: &[u8]) -> Result<(), ReasonCode> {
-        let _lock = self.mqtt_mutex.lock().await;
-
         let mut rx_buffer = [0; 4096];
         let mut tx_buffer = [0; 4096];
         let mut recv_buffer = [0; 1024]; // Increased from 80 to 1024
