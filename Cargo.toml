@@ -63,6 +63,9 @@ embassy-sync = { version = "0.7.0" }
 heapless = { version = "0.8.0", default-features = false }
 rust-mqtt = { version = "0.3.0", default-features = false }
 ocpp_rs = "0.2.5"
+chrono = { version = "^0.4", default-features = false, features = ["serde", "alloc"] }
+embedded-tls = { git = "https://github.com/drogue-iot/embedded-tls", default-features = false, features = ["alloc"] }
+# rand = { version = "^0.6.4", default-features = false, features = [] }
 
 [profile.dev]
 # Rust debug is too slow.

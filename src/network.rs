@@ -4,10 +4,11 @@ use core::{
     matches,
     option::Option::{self, None, Some},
     result::Result::{Err, Ok},
-    str::FromStr,
+    str,
 };
 use embassy_executor::Spawner;
 use embassy_net::{tcp::TcpSocket, IpAddress, StackResources};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 
 use embassy_time::{Duration, Timer};
 use esp_hal::timer::timg::TimerGroup;
@@ -15,7 +16,7 @@ use esp_wifi::{
     wifi::{ClientConfiguration, Configuration, WifiController, WifiEvent, WifiState},
     EspWifiController,
 };
-use log::{error, info, warn};
+use log::{error, info};
 use rust_mqtt::{
     client::{client::MqttClient, client_config::ClientConfig},
     packet::v5::{publish_packet::QualityOfService::QoS1, reason_codes::ReasonCode},
@@ -25,6 +26,7 @@ use rust_mqtt::{
 pub struct NetworkStack {
     pub stack: &'static embassy_net::Stack<'static>,
     pub app_config: Config,
+    mqtt_mutex: Mutex<CriticalSectionRawMutex, ()>,
 }
 
 impl NetworkStack {
@@ -70,7 +72,11 @@ impl NetworkStack {
             .ok();
 
         info!("WiFi controller started");
-        NetworkStack { stack, app_config }
+        NetworkStack {
+            stack,
+            app_config,
+            mqtt_mutex: Mutex::new(()),
+        }
     }
 
     pub async fn wait_for_ip(&self) {
@@ -103,11 +109,7 @@ impl NetworkStack {
             .await;
         match result {
             Ok(ips) if !ips.is_empty() => Some(ips[0]),
-            Ok(_) => {
-                warn!("DNS resolved {hostname} but no IPs found");
-                None
-            }
-            Err(_) => {
+            _ => {
                 error!("Failed to resolve DNS for {hostname}");
                 None
             }
@@ -129,23 +131,24 @@ impl NetworkStack {
 
     /// Create and use an MQTT client to send a single message
     /// This is a simplified approach that creates a fresh connection for each message
-    pub async fn send_mqtt_message(
-        &self,
-        broker_ip: &str,
-        topic: &str,
-        message: &[u8],
-    ) -> Result<(), ReasonCode> {
+    /// Uses a mutex to prevent concurrent MQTT operations that could cause deadlocks
+    pub async fn send_mqtt_message(&self, message: &[u8]) -> Result<(), ReasonCode> {
+        let _lock = self.mqtt_mutex.lock().await;
+
         let mut rx_buffer = [0; 4096];
         let mut tx_buffer = [0; 4096];
-        let mut recv_buffer = [0; 80];
-        let mut write_buffer = [0; 80];
+        let mut recv_buffer = [0; 1024]; // Increased from 80 to 1024
+        let mut write_buffer = [0; 1024]; // Increased from 80 to 1024
+
+        let address = self
+            .resolve_dns(self.app_config.mqtt_broker)
+            .await
+            .ok_or(ReasonCode::NetworkError)?;
+        let topic = self.app_config.charger_topic();
 
         let mut socket = TcpSocket::new(*self.stack, &mut rx_buffer, &mut tx_buffer);
 
-        let address = IpAddress::from_str(broker_ip).map_err(|_| ReasonCode::NetworkError)?;
-        let remote_endpoint = (address, 1883);
-
-        info!("MQTT: Connecting to broker...");
+        let remote_endpoint = (address, self.app_config.mqtt_port);
 
         socket
             .connect(remote_endpoint)
@@ -153,16 +156,29 @@ impl NetworkStack {
             .map_err(|_| ReasonCode::NetworkError)?;
 
         let config = self.create_mqtt_config();
-        let mut client =
-            MqttClient::<_, 5, _>::new(socket, &mut write_buffer, 80, &mut recv_buffer, 80, config);
+        let mut client = MqttClient::<_, 5, _>::new(
+            socket,
+            &mut write_buffer,
+            1024,
+            &mut recv_buffer,
+            1024,
+            config,
+        );
 
         client.connect_to_broker().await?;
 
-        info!("MQTT: Publishing message to topic '{topic}'");
+        info!(
+            "MQTT: Publishing message to topic '{topic}' (length: {} bytes)",
+            message.len()
+        );
+        info!(
+            "MQTT: Message content: {}",
+            str::from_utf8(message).unwrap_or("<invalid UTF-8>")
+        );
 
-        match client.send_message(topic, message, QoS1, true).await {
+        match client.send_message(&topic, message, QoS1, true).await {
             Ok(()) => info!("MQTT: Message sent successfully"),
-            Err(_) => info!("MQTT: Failed to send message"),
+            Err(e) => info!("MQTT: Failed to send message: {e:?}"),
         };
 
         Ok(())

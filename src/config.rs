@@ -4,17 +4,14 @@ use alloc::format;
 /// Configuration structure for the ESP32-C6 charger
 #[derive(Clone, Debug)]
 pub struct Config {
-    /// WiFi network SSID
     pub wifi_ssid: &'static str,
-    /// WiFi network password
     pub wifi_password: &'static str,
-    /// Charger identifier/name
     pub charger_name: &'static str,
-    /// MQTT broker hostname or IP address
+    pub charger_model: &'static str,
+    pub charger_vendor: &'static str,
+    pub charger_serial: &'static str,
     pub mqtt_broker: &'static str,
-    /// MQTT broker port
     pub mqtt_port: u16,
-    /// OCPP client identifier
     pub ocpp_client_id: &'static str,
 }
 
@@ -74,6 +71,9 @@ impl Config {
             wifi_ssid: option_env!("CHARGER_WIFI_SSID").unwrap_or(toml_wifi_ssid),
             wifi_password: option_env!("CHARGER_WIFI_PASSWORD").unwrap_or(toml_wifi_password),
             charger_name: option_env!("CHARGER_NAME").unwrap_or(toml_charger_name),
+            charger_model: option_env!("CHARGER_MODEL").unwrap_or("ESP32-C6"),
+            charger_vendor: option_env!("CHARGER_VENDOR").unwrap_or("GA Make"),
+            charger_serial: option_env!("CHARGER_SERIAL").unwrap_or("esp32c6-charger-001"),
             mqtt_broker: option_env!("CHARGER_MQTT_BROKER").unwrap_or(toml_mqtt_broker),
             mqtt_port: option_env!("CHARGER_MQTT_PORT")
                 .and_then(|p| p.parse().ok())
@@ -88,6 +88,9 @@ impl Config {
             wifi_ssid: option_env!("CHARGER_WIFI_SSID").unwrap_or("Wokwi-GUEST"),
             wifi_password: option_env!("CHARGER_WIFI_PASSWORD").unwrap_or(""),
             charger_name: option_env!("CHARGER_NAME").unwrap_or("esp32c6-charger-001"),
+            charger_model: option_env!("CHARGER_MODEL").unwrap_or("ESP32-C6"),
+            charger_vendor: option_env!("CHARGER_VENDOR").unwrap_or("GA Make"),
+            charger_serial: option_env!("CHARGER_SERIAL").unwrap_or("esp32c6-charger-001"),
             mqtt_broker: option_env!("CHARGER_MQTT_BROKER").unwrap_or("broker.hivemq.com"),
             mqtt_port: option_env!("CHARGER_MQTT_PORT")
                 .and_then(|p| p.parse().ok())

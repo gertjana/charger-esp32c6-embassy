@@ -6,11 +6,12 @@
     holding buffers for the duration of a data transfer."
 )]
 
-use alloc::string::ToString;
 use core::fmt::Write;
 use core::sync::atomic::{AtomicU32, Ordering};
 use embassy_executor::Spawner;
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
 use embassy_time::{Duration, Timer};
+use esp32c6_embassy_charged::messages;
 use esp32c6_embassy_charged::{
     charger::{Charger, ChargerInput, ChargerState},
     config::Config,
@@ -22,20 +23,21 @@ use esp_hal::{
     gpio::{Input, InputConfig, Level, Output, Pull},
     timer::{systimer::SystemTimer, timg::TimerGroup},
 };
-use log::info;
-use ocpp_rs::v16::{
-    call::{Action, Call, Heartbeat},
-    parse::{self, Message},
-};
+use log::{info, warn};
+use ocpp_rs::v16::parse::{self};
 
 /// Thread-safe static counter for OCPP message IDs
 static OCPP_MESSAGE_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
+
 fn next_ocpp_message_id() -> heapless::String<32> {
     let next = OCPP_MESSAGE_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
     let mut data = heapless::String::new();
     let _ = write!(data, "{next}");
     data
 }
+
+/// Message queue for MQTT messages
+static MQTT_CHANNEL: Channel<CriticalSectionRawMutex, heapless::Vec<u8, 512>, 5> = Channel::new();
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -120,17 +122,38 @@ async fn main(spawner: Spawner) {
         .ok();
 
     // Start the network related tasks
+    Timer::after(Duration::from_secs(1)).await;
 
-    spawner.spawn(heartbeat_task(network)).ok();
+    spawner.spawn(mqtt_sender_task(network)).ok();
+
+    spawner.spawn(heartbeat_task()).ok();
+    spawner.spawn(boot_notification_task()).ok();
 
     let mut old_state = charger.get_state().await;
+
+    info!("Starting main loop...");
     loop {
+        // main loop just checks state and logs state changes
         let current_state = charger.get_state().await;
         if current_state != old_state {
             info!("Charger state changed: {}", current_state.as_str());
             old_state = current_state;
         }
         Timer::after(Duration::from_secs(1)).await;
+    }
+}
+
+#[embassy_executor::task]
+async fn mqtt_sender_task(network: &'static NetworkStack) {
+    info!("Task started: MQTT Sender");
+    loop {
+        let message = MQTT_CHANNEL.receive().await;
+
+        let _ = network.send_mqtt_message(&message).await.map_err(|e| {
+            warn!("Failed to send MQTT message: {e:?}");
+        });
+
+        Timer::after(Duration::from_millis(100)).await;
     }
 }
 
@@ -190,34 +213,36 @@ async fn charger_relay_task(charger: &'static Charger, mut relay: Output<'static
 }
 
 #[embassy_executor::task]
-async fn heartbeat_task(network: &'static NetworkStack) {
+async fn heartbeat_task() {
     info!("Task started: Network Heartbeat");
-    let broker_ip = network
-        .resolve_dns(network.app_config.mqtt_broker)
-        .await
-        .unwrap();
-    let topic = network.app_config.charger_topic();
+    Timer::after(Duration::from_secs(5)).await;
 
     loop {
-        // Create OCPP 1.6 Heartbeat Call message using thread-safe message ID
-        let heartbeat_call = Message::Call(Call::new(
-            next_ocpp_message_id().to_string(),
-            Action::Heartbeat(Heartbeat {}),
-        ));
+        let heartbeat_req = &messages::heartbeat(&next_ocpp_message_id());
+        let message = parse::serialize_message(heartbeat_req).unwrap();
 
-        let message = parse::serialize_message(&heartbeat_call).unwrap();
-
-        match network
-            .send_mqtt_message(&broker_ip.to_string(), topic.as_str(), message.as_bytes())
-            .await
-        {
-            Ok(()) => info!(
-                "OCPP Heartbeat message sent successfully to {}",
-                topic.as_str()
-            ),
-            Err(_) => info!("Failed to send OCPP Heartbeat message"),
+        let mut msg_vec = heapless::Vec::new();
+        if msg_vec.extend_from_slice(message.as_bytes()).is_ok() {
+            MQTT_CHANNEL.send(msg_vec).await;
+        } else {
+            warn!("Heartbeat message too large for queue");
         }
-
         Timer::after(Duration::from_secs(30)).await;
+    }
+}
+
+#[embassy_executor::task]
+async fn boot_notification_task() {
+    info!("Task started: Boot Notification");
+
+    let boot_notification_req =
+        &messages::boot_notification(&next_ocpp_message_id(), &Config::from_config());
+    let message = parse::serialize_message(boot_notification_req).unwrap();
+
+    let mut msg_vec = heapless::Vec::new();
+    if msg_vec.extend_from_slice(message.as_bytes()).is_ok() {
+        MQTT_CHANNEL.send(msg_vec).await;
+    } else {
+        warn!("Boot Notification message too large for queue");
     }
 }
