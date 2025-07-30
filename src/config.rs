@@ -103,13 +103,13 @@ impl Config {
     pub fn charger_topic(&self) -> heapless::String<64> {
         let mut topic = heapless::String::new();
         topic.push_str("/charger/").ok();
-        topic.push_str(self.charger_name).ok();
+        topic.push_str(self.charger_serial).ok();
         topic
     }
     pub fn system_topic(&self) -> heapless::String<64> {
         let mut topic = heapless::String::new();
         topic.push_str("/system/").ok();
-        topic.push_str(self.charger_name).ok();
+        topic.push_str(self.charger_serial).ok();
         topic
     }
 

@@ -14,7 +14,7 @@ use esp_wifi::{
     wifi::{ClientConfiguration, Configuration, WifiController, WifiEvent, WifiState},
     EspWifiController,
 };
-use log::{error, info};
+use log::{error, info, warn};
 use rust_mqtt::{
     client::{client::MqttClient, client_config::ClientConfig},
     packet::v5::{publish_packet::QualityOfService::QoS1, reason_codes::ReasonCode},
@@ -117,27 +117,26 @@ impl NetworkStack {
 
         config.add_max_subscribe_qos(rust_mqtt::packet::v5::publish_packet::QualityOfService::QoS1);
         config.add_client_id("clientId-8rhWgBODCl");
-        config.max_packet_size = 100;
+        config.max_packet_size = 2048;
 
         config
     }
 
-    /// Create and use an MQTT client to send a single message
-    /// This is a simplified approach that creates a fresh connection for each message
-    pub async fn send_mqtt_message(&self, message: &[u8]) -> Result<(), ReasonCode> {
-        let mut rx_buffer = [0; 4096];
-        let mut tx_buffer = [0; 4096];
-        let mut recv_buffer = [0; 1024]; // Increased from 80 to 1024
-        let mut write_buffer = [0; 1024]; // Increased from 80 to 1024
-
+    /// Initialize and return an MQTT client with established connection
+    /// This creates buffers, socket, and connects to the MQTT broker
+    pub async fn create_mqtt_client<'a>(
+        &self,
+        rx_buffer: &'a mut [u8],
+        tx_buffer: &'a mut [u8],
+        write_buffer: &'a mut [u8],
+        recv_buffer: &'a mut [u8],
+    ) -> Result<MqttClient<'a, TcpSocket<'a>, 5, CountingRng>, ReasonCode> {
         let address = self
             .resolve_dns(self.app_config.mqtt_broker)
             .await
             .ok_or(ReasonCode::NetworkError)?;
-        let topic = self.app_config.charger_topic();
 
-        let mut socket = TcpSocket::new(*self.stack, &mut rx_buffer, &mut tx_buffer);
-
+        let mut socket = TcpSocket::new(*self.stack, rx_buffer, tx_buffer);
         let remote_endpoint = (address, self.app_config.mqtt_port);
 
         socket
@@ -148,30 +147,86 @@ impl NetworkStack {
         let config = self.create_mqtt_config();
         let mut client = MqttClient::<_, 5, _>::new(
             socket,
-            &mut write_buffer,
-            1024,
-            &mut recv_buffer,
-            1024,
+            write_buffer,
+            write_buffer.len(),
+            recv_buffer,
+            recv_buffer.len(),
             config,
         );
 
         client.connect_to_broker().await?;
 
+        client
+            .subscribe_to_topic(&self.app_config.system_topic())
+            .await?;
+
+        Ok(client)
+    }
+
+    pub async fn send_message_with_client(
+        &self,
+        client: &mut MqttClient<'_, TcpSocket<'_>, 5, CountingRng>,
+        message: &[u8],
+    ) -> Result<(), ReasonCode> {
+        let topic = self.app_config.charger_topic();
         info!(
-            "MQTT: Publishing message to topic '{topic}' (length: {} bytes)",
-            message.len()
-        );
-        info!(
-            "MQTT: Message content: {}",
+            "MQTT: Sending message to topic {}: {}",
+            topic,
             str::from_utf8(message).unwrap_or("<invalid UTF-8>")
         );
-
         match client.send_message(&topic, message, QoS1, true).await {
             Ok(()) => info!("MQTT: Message sent successfully"),
             Err(e) => info!("MQTT: Failed to send message: {e:?}"),
         };
 
         Ok(())
+    }
+
+    /// Receive messages from MQTT broker with connection health check
+    pub async fn receive_message_with_client(
+        &self,
+        client: &mut MqttClient<'_, TcpSocket<'_>, 5, CountingRng>,
+    ) -> Result<Option<heapless::Vec<u8, 2048>>, ReasonCode> {
+        // Use timeout-based approach to avoid blocking indefinitely
+        // This will attempt to receive a message with a short timeout
+        match embassy_time::with_timeout(Duration::from_millis(200), client.receive_message()).await
+        {
+            Ok(Ok((topic, payload))) => {
+                let mut v = heapless::Vec::<u8, 2048>::new();
+                if v.extend_from_slice(payload).is_ok() {
+                    info!(
+                        "MQTT: Received message from topic {}: {}",
+                        topic,
+                        str::from_utf8(payload).unwrap_or("<invalid UTF-8>")
+                    );
+                    Ok(Some(v))
+                } else {
+                    warn!(
+                        "MQTT: Received message too large for buffer (size: {})",
+                        payload.len()
+                    );
+                    Ok(None)
+                }
+            }
+            Ok(Err(e)) => {
+                // Only log errors that are not timeout/connection related
+                match e {
+                    ReasonCode::NetworkError => {
+                        // Network errors are common when no message is available
+                        // Don't spam logs for this
+                        Ok(None)
+                    }
+                    _ => {
+                        error!("MQTT: Unexpected error receiving message: {e:?}");
+                        Err(e)
+                    }
+                }
+            }
+            Err(_) => {
+                // Timeout occurred - no message available, this is normal
+                Ok(None)
+            }
+        }
     }
 }
 

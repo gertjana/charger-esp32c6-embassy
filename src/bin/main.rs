@@ -9,6 +9,7 @@
 use core::fmt::Write;
 use core::sync::atomic::{AtomicU32, Ordering};
 use embassy_executor::Spawner;
+use embassy_net::tcp::TcpSocket;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
 use embassy_time::{Duration, Timer};
 use esp32c6_embassy_charged::messages;
@@ -25,6 +26,8 @@ use esp_hal::{
 };
 use log::{info, warn};
 use ocpp_rs::v16::parse::{self};
+use rust_mqtt::client::client::MqttClient;
+use rust_mqtt::utils::rng_generator::CountingRng;
 
 /// Thread-safe static counter for OCPP message IDs
 static OCPP_MESSAGE_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
@@ -36,8 +39,11 @@ fn next_ocpp_message_id() -> heapless::String<32> {
     data
 }
 
-/// Message queue for MQTT messages
-static MQTT_CHANNEL: Channel<CriticalSectionRawMutex, heapless::Vec<u8, 512>, 5> = Channel::new();
+/// Message queues for MQTT messages
+static MQTT_SEND_CHANNEL: Channel<CriticalSectionRawMutex, heapless::Vec<u8, 2048>, 5> =
+    Channel::new();
+static MQTT_RECEIVE_CHANNEL: Channel<CriticalSectionRawMutex, heapless::Vec<u8, 2048>, 5> =
+    Channel::new();
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -121,19 +127,43 @@ async fn main(spawner: Spawner) {
         .spawn(charger_relay_task(charger, charger_relay))
         .ok();
 
-    // Start the network related tasks
     Timer::after(Duration::from_secs(1)).await;
 
-    spawner.spawn(mqtt_sender_task(network)).ok();
+    info!("Creating MQTT client...");
+    let rx_buffer = mk_static!([u8; 1024], [0; 1024]);
+    let tx_buffer = mk_static!([u8; 1024], [0; 1024]);
+    let write_buffer = mk_static!([u8; 2048], [0; 2048]);
+    let recv_buffer = mk_static!([u8; 2048], [0; 2048]);
+
+    match network
+        .create_mqtt_client(rx_buffer, tx_buffer, write_buffer, recv_buffer)
+        .await
+    {
+        Ok(client) => {
+            info!("MQTT client created successfully");
+            let client = mk_static!(
+                MqttClient<'static, TcpSocket<'static>, 5, CountingRng>,
+                client
+            );
+            spawner.spawn(mqtt_client_task(network, client)).ok();
+        }
+        Err(e) => {
+            warn!("Failed to create MQTT client: {e:?}");
+            // Could spawn a retry task here if needed
+        }
+    }
+
+    spawner.spawn(ocpp_response_handler_task()).ok();
 
     spawner.spawn(heartbeat_task()).ok();
+
     spawner.spawn(boot_notification_task()).ok();
 
     let mut old_state = charger.get_state().await;
 
     info!("Starting main loop...");
     loop {
-        // main loop just checks state and logs state changes
+        // TODO update display with current state
         let current_state = charger.get_state().await;
         if current_state != old_state {
             info!("Charger state changed: {}", current_state.as_str());
@@ -143,20 +173,89 @@ async fn main(spawner: Spawner) {
     }
 }
 
+/// Task to handle MQTT client operations
+/// This task will continuously check for incoming messages and send outgoing messages
+/// from the respective channels.
 #[embassy_executor::task]
-async fn mqtt_sender_task(network: &'static NetworkStack) {
-    info!("Task started: MQTT Sender");
+async fn mqtt_client_task(
+    network: &'static NetworkStack,
+    client: &'static mut MqttClient<'static, TcpSocket<'static>, 5, CountingRng>,
+) {
+    info!("Task started: MQTT Client (Send/Receive)");
+
     loop {
-        let message = MQTT_CHANNEL.receive().await;
+        match network.receive_message_with_client(client).await {
+            Ok(Some(message)) => {
+                MQTT_RECEIVE_CHANNEL.send(message).await;
+            }
+            Ok(None) => {
+                // No message received, continue to check for outgoing messages
+            }
+            Err(e) => {
+                warn!("Failed to receive MQTT message: {e:?}");
+            }
+        }
 
-        let _ = network.send_mqtt_message(&message).await.map_err(|e| {
-            warn!("Failed to send MQTT message: {e:?}");
-        });
+        if let Ok(message) = MQTT_SEND_CHANNEL.try_receive() {
+            match network.send_message_with_client(client, &message).await {
+                Ok(()) => {
+                    // Message sent successfully
+                }
+                Err(e) => {
+                    warn!("Failed to send MQTT message: {e:?}");
+                }
+            }
+        }
 
-        Timer::after(Duration::from_millis(100)).await;
+        Timer::after(Duration::from_millis(50)).await;
     }
 }
 
+/// Task to handle incoming OCPP responses from MQTT
+#[embassy_executor::task]
+async fn ocpp_response_handler_task() {
+    info!("Task started: OCPP Response Handler");
+
+    loop {
+        let message = MQTT_RECEIVE_CHANNEL.receive().await;
+
+        match core::str::from_utf8(&message) {
+            Ok(message_str) => {
+                //TODO Parse the message as an CallResult or CallError
+                if message_str.contains("Heartbeat") {
+                    info!("OCPP: Received Heartbeat response with timestamp");
+                } else if message_str.contains("BootNotification") {
+                    info!("OCPP: Received BootNotification response");
+                } else if message_str.contains("Authorize") {
+                    info!("OCPP: Received Authorize message");
+                } else if message_str.contains("StartTransaction") {
+                    info!("OCPP: Received StartTransaction message");
+                } else if message_str.contains("StopTransaction") {
+                    info!("OCPP: Received StopTransaction message");
+                } else if message_str.contains("RemoteStartTransaction") {
+                    info!("OCPP: Received RemoteStartTransaction command");
+                } else if message_str.contains("RemoteStopTransaction") {
+                    info!("OCPP: Received RemoteStopTransaction command");
+                } else if message_str.contains("StatusNotification") {
+                    info!("OCPP: Received StatusNotification message");
+                } else if message_str.contains("MeterValues") {
+                    info!("OCPP: Received MeterValues message");
+                } else if message_str.starts_with('[') && message_str.contains(',') {
+                    // Looks like an OCPP message but unknown type
+                    info!("OCPP: Received unknown message type: {message_str}");
+                } else {
+                    // Non-OCPP message
+                    info!("MQTT: Non-OCPP message received: {message_str}");
+                }
+            }
+            Err(_) => {
+                warn!("MQTT: Received non-UTF8 message, length: {}", message.len());
+            }
+        }
+    }
+}
+
+/// Task to control the charger LED based on the charging state
 #[embassy_executor::task]
 async fn charger_led_task(charger: &'static Charger, mut led_pin: Output<'static>) {
     info!("Task started: Charger Led Charging Indicator");
@@ -170,6 +269,7 @@ async fn charger_led_task(charger: &'static Charger, mut led_pin: Output<'static
     }
 }
 
+/// Task to detect charger cable connection and disconnection
 #[embassy_executor::task]
 async fn charger_cable_task(charger: &'static Charger, mut button: Input<'static>) {
     info!("Task started: Charger cable Detector");
@@ -187,6 +287,7 @@ async fn charger_cable_task(charger: &'static Charger, mut button: Input<'static
     }
 }
 
+/// Task to detect charger swipe events
 #[embassy_executor::task]
 async fn charger_swipe_task(charger: &'static Charger, mut swipe_switch: Input<'static>) {
     info!("Task started: Charger swipe detector");
@@ -199,6 +300,7 @@ async fn charger_swipe_task(charger: &'static Charger, mut swipe_switch: Input<'
     }
 }
 
+/// Task to control the charger relay based on the charging state
 #[embassy_executor::task]
 async fn charger_relay_task(charger: &'static Charger, mut relay: Output<'static>) {
     info!("Task started: Charger relay control");
@@ -212,6 +314,7 @@ async fn charger_relay_task(charger: &'static Charger, mut relay: Output<'static
     }
 }
 
+/// Task to send periodic heartbeat messages to the MQTT broker
 #[embassy_executor::task]
 async fn heartbeat_task() {
     info!("Task started: Network Heartbeat");
@@ -223,7 +326,7 @@ async fn heartbeat_task() {
 
         let mut msg_vec = heapless::Vec::new();
         if msg_vec.extend_from_slice(message.as_bytes()).is_ok() {
-            MQTT_CHANNEL.send(msg_vec).await;
+            MQTT_SEND_CHANNEL.send(msg_vec).await;
         } else {
             warn!("Heartbeat message too large for queue");
         }
@@ -231,6 +334,8 @@ async fn heartbeat_task() {
     }
 }
 
+/// Task to send boot notification to the MQTT broker
+/// Note that this task will run only once at startup
 #[embassy_executor::task]
 async fn boot_notification_task() {
     info!("Task started: Boot Notification");
@@ -241,7 +346,7 @@ async fn boot_notification_task() {
 
     let mut msg_vec = heapless::Vec::new();
     if msg_vec.extend_from_slice(message.as_bytes()).is_ok() {
-        MQTT_CHANNEL.send(msg_vec).await;
+        MQTT_SEND_CHANNEL.send(msg_vec).await;
     } else {
         warn!("Boot Notification message too large for queue");
     }
