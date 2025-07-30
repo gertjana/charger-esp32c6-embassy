@@ -186,13 +186,13 @@ impl NetworkStack {
     pub async fn receive_message_with_client(
         &self,
         client: &mut MqttClient<'_, TcpSocket<'_>, 5, CountingRng>,
-    ) -> Result<Option<heapless::Vec<u8, 2048>>, ReasonCode> {
+    ) -> Result<Option<heapless::Vec<u8, BUFFER_SIZE>>, ReasonCode> {
         // Use timeout-based approach to avoid blocking indefinitely
         // This will attempt to receive a message with a short timeout
         match embassy_time::with_timeout(Duration::from_millis(200), client.receive_message()).await
         {
             Ok(Ok((topic, payload))) => {
-                let mut v = heapless::Vec::<u8, 2048>::new();
+                let mut v = heapless::Vec::<u8, BUFFER_SIZE>::new();
                 if v.extend_from_slice(payload).is_ok() {
                     info!(
                         "MQTT: Received message from topic {}: {}",
