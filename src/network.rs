@@ -189,7 +189,7 @@ impl NetworkStack {
     ) -> Result<Option<heapless::Vec<u8, BUFFER_SIZE>>, ReasonCode> {
         // Use timeout-based approach to avoid blocking indefinitely
         // This will attempt to receive a message with a short timeout
-        match embassy_time::with_timeout(Duration::from_millis(200), client.receive_message()).await
+        match embassy_time::with_timeout(Duration::from_millis(DEFAULT_TIMEOUT_MS), client.receive_message()).await
         {
             Ok(Ok((topic, payload))) => {
                 let mut v = heapless::Vec::<u8, BUFFER_SIZE>::new();
