@@ -21,6 +21,8 @@ use rust_mqtt::{
     utils::rng_generator::CountingRng,
 };
 
+const BUFFER_SIZE: usize = 2048;
+const DEFAULT_TIMEOUT_MS: u64 = 200;
 pub struct NetworkStack {
     pub stack: &'static embassy_net::Stack<'static>,
     pub app_config: Config,
@@ -189,7 +191,11 @@ impl NetworkStack {
     ) -> Result<Option<heapless::Vec<u8, BUFFER_SIZE>>, ReasonCode> {
         // Use timeout-based approach to avoid blocking indefinitely
         // This will attempt to receive a message with a short timeout
-        match embassy_time::with_timeout(Duration::from_millis(DEFAULT_TIMEOUT_MS), client.receive_message()).await
+        match embassy_time::with_timeout(
+            Duration::from_millis(DEFAULT_TIMEOUT_MS),
+            client.receive_message(),
+        )
+        .await
         {
             Ok(Ok((topic, payload))) => {
                 let mut v = heapless::Vec::<u8, BUFFER_SIZE>::new();
