@@ -6,7 +6,10 @@ ssid = "YOUR_WIFI_SSID"
 password = "YOUR_WIFI_PASSWORD"
 
 [charger]
-name = "esp32c6-charger-001"
+name = "esp32c6 charger 001"
+model = "ESP32-C6"
+vendor = "GA Make"
+serial = "esp32c6-charger-001"
 
 [mqtt]
 broker = "broker.hivemq.com"

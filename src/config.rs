@@ -12,7 +12,7 @@ pub struct Config {
     pub charger_serial: &'static str,
     pub mqtt_broker: &'static str,
     pub mqtt_port: u16,
-    pub ocpp_client_id: &'static str,
+    pub mqtt_client_id: &'static str,
 }
 
 /// Simple TOML value extraction functions
@@ -55,34 +55,39 @@ impl Config {
         // Include the TOML configuration at compile time
         const CONFIG_TOML: &str = include_str!("../app_config.toml");
 
-        // Extract values from TOML with fallbacks
+        // Extract values from TOML with fallbacks matching app_config.toml.example
         let toml_wifi_ssid =
             extract_toml_string(CONFIG_TOML, "wifi", "ssid").unwrap_or("Wokwi-GUEST");
         let toml_wifi_password = extract_toml_string(CONFIG_TOML, "wifi", "password").unwrap_or("");
         let toml_charger_name =
-            extract_toml_string(CONFIG_TOML, "charger", "name").unwrap_or("esp32c6-charger-001");
+            extract_toml_string(CONFIG_TOML, "charger", "name").unwrap_or("esp32c6 charger 001");
+        let toml_charger_model =
+            extract_toml_string(CONFIG_TOML, "charger", "model").unwrap_or("ESP32-C6");
+        let toml_charger_vendor =
+            extract_toml_string(CONFIG_TOML, "charger", "vendor").unwrap_or("GA Make");
+        let toml_charger_serial =
+            extract_toml_string(CONFIG_TOML, "charger", "serial").unwrap_or("esp32c6-charger-001");
         let toml_mqtt_broker =
             extract_toml_string(CONFIG_TOML, "mqtt", "broker").unwrap_or("broker.hivemq.com");
         let toml_mqtt_port = extract_toml_integer(CONFIG_TOML, "mqtt", "port").unwrap_or(1883);
-        let toml_ocpp_client_id =
+        let toml_mqtt_client_id =
             extract_toml_string(CONFIG_TOML, "mqtt", "client_id").unwrap_or("esp32c6-charger-001");
 
         Self {
             wifi_ssid: option_env!("CHARGER_WIFI_SSID").unwrap_or(toml_wifi_ssid),
             wifi_password: option_env!("CHARGER_WIFI_PASSWORD").unwrap_or(toml_wifi_password),
             charger_name: option_env!("CHARGER_NAME").unwrap_or(toml_charger_name),
-            charger_model: option_env!("CHARGER_MODEL").unwrap_or("ESP32-C6"),
-            charger_vendor: option_env!("CHARGER_VENDOR").unwrap_or("GA Make"),
-            charger_serial: option_env!("CHARGER_SERIAL").unwrap_or("esp32c6-charger-001"),
+            charger_model: option_env!("CHARGER_MODEL").unwrap_or(toml_charger_model),
+            charger_vendor: option_env!("CHARGER_VENDOR").unwrap_or(toml_charger_vendor),
+            charger_serial: option_env!("CHARGER_SERIAL").unwrap_or(toml_charger_serial),
             mqtt_broker: option_env!("CHARGER_MQTT_BROKER").unwrap_or(toml_mqtt_broker),
             mqtt_port: option_env!("CHARGER_MQTT_PORT")
                 .and_then(|p| p.parse().ok())
                 .unwrap_or(toml_mqtt_port),
-            ocpp_client_id: option_env!("CHARGER_MQTT_CLIENT_ID").unwrap_or(toml_ocpp_client_id),
+            mqtt_client_id: option_env!("CHARGER_MQTT_CLIENT_ID").unwrap_or(toml_mqtt_client_id),
         }
     }
 
-    /// Create a new configuration from environment variables (legacy method)
     pub fn from_env() -> Self {
         Self {
             wifi_ssid: option_env!("CHARGER_WIFI_SSID").unwrap_or("Wokwi-GUEST"),
@@ -95,11 +100,10 @@ impl Config {
             mqtt_port: option_env!("CHARGER_MQTT_PORT")
                 .and_then(|p| p.parse().ok())
                 .unwrap_or(1883),
-            ocpp_client_id: option_env!("CHARGER_MQTT_CLIENT_ID").unwrap_or("esp32c6-charger-001"),
+            mqtt_client_id: option_env!("CHARGER_MQTT_CLIENT_ID").unwrap_or("esp32c6-charger-001"),
         }
     }
 
-    /// MQTT topics
     pub fn charger_topic(&self) -> heapless::String<64> {
         let mut topic = heapless::String::new();
         topic.push_str("/charger/").ok();
@@ -111,11 +115,6 @@ impl Config {
         topic.push_str("/system/").ok();
         topic.push_str(self.charger_serial).ok();
         topic
-    }
-
-    /// Get OCPP message ID prefix
-    pub fn ocpp_message_id_prefix(&self) -> &str {
-        self.charger_name
     }
 }
 
