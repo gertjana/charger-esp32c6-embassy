@@ -23,6 +23,7 @@ use rust_mqtt::{
 
 const BUFFER_SIZE: usize = 2048;
 const DEFAULT_TIMEOUT_MS: u64 = 200;
+
 pub struct NetworkStack {
     pub stack: &'static embassy_net::Stack<'static>,
     pub app_config: Config,
@@ -118,9 +119,8 @@ impl NetworkStack {
         );
 
         config.add_max_subscribe_qos(rust_mqtt::packet::v5::publish_packet::QualityOfService::QoS1);
-        config.add_client_id("clientId-8rhWgBODCl");
+        config.add_client_id(self.app_config.mqtt_client_id);
         config.max_packet_size = 2048;
-
         config
     }
 

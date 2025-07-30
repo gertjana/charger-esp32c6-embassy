@@ -20,12 +20,15 @@ ssid = "YOUR_WIFI_NETWORK"
 password = "YOUR_WIFI_PASSWORD"
 
 [charger]
-name = "your-charger-id"
+name = "esp32c6 charger 001"
+model = "ESP32-C6"
+vendor = "GA Make"
+serial = "esp32c6-charger-001"
 
 [mqtt]
-broker = "your.mqtt.broker.com"
+broker = "broker.hivemq.com"
 port = 1883
-client_id = "your-charger-client-id"
+client_id = "esp32c6-charger-001"
 ```
 
 ### 2. Environment Variable Overrides (Optional)
@@ -36,6 +39,9 @@ You can override any configuration value using environment variables:
 export CHARGER_WIFI_SSID="MyWiFiNetwork"
 export CHARGER_WIFI_PASSWORD="MyWiFiPassword"
 export CHARGER_NAME="my-charger-001"
+export CHARGER_MODEL="ESP32-C6"
+export CHARGER_VENDOR="My Company"
+export CHARGER_SERIAL="my-charger-001"
 export CHARGER_MQTT_BROKER="192.168.1.100"
 export CHARGER_MQTT_PORT="1883"
 export CHARGER_MQTT_CLIENT_ID="my-charger-001"
@@ -48,6 +54,27 @@ cargo build
 cargo run
 ```
 
+## Configuration Reference
+
+### WiFi Settings
+- `ssid`: Your WiFi network name
+- `password`: Your WiFi network password
+
+### Charger Identity
+- `name`: Human-readable charger name for identification
+- `model`: Hardware model identifier (default: "ESP32-C6")
+- `vendor`: Manufacturer or organization name
+- `serial`: Unique serial number for this charger instance
+
+### MQTT Connection
+- `broker`: MQTT broker hostname or IP address
+- `port`: MQTT broker port (default: 1883)
+- `client_id`: Unique identifier for MQTT client connection
+
+The charger automatically generates MQTT topics based on the serial number:
+- Publishing topic: `/charger/{serial}`
+- Subscription topic: `/system/{serial}`
+
 ## Hardware Connections
 
 | Function | GPIO Pin | Description |
@@ -57,13 +84,22 @@ cargo run
 | Swipe Switch | GPIO1 | Card/authorization detector |
 | Charger Relay | GPIO2 | Main charging relay control |
 
-## OCPP Messages
+## OCPP Protocol Support
 
-The charger supports OCPP 1.6 protocol with the following messages:
+The charger implements OCPP 1.6 protocol with bidirectional MQTT communication:
+
+### Outgoing Messages (Published to `/charger/{serial}`)
 - **Heartbeat**: Periodic status updates every 30 seconds
-- **StatusNotification**: Charger state changes
-- **StartTransaction**: Charging session initiation
-- **StopTransaction**: Charging session completion
+- **BootNotification**: Sent once at startup with charger details
+- **StatusNotification**: Charger state changes (Available, Preparing, Charging, etc.) (not yet)
+- **StartTransaction**: Charging session initiation (not yet)
+- **StopTransaction**: Charging session completion (not yet)
+
+### Incoming Messages (Subscribed to `/system/{serial}`)
+- **RemoteStartTransaction**: Cloud-initiated charging commands  (not yet)
+- **RemoteStopTransaction**: Cloud-initiated stop commands (not yet)
+- **Authorize**: Payment/authorization responses  (not yet)
+- **OCPP Responses**: All CallResult and CallError responses to request messages implemented 
 
 ## Configuration Priority
 
@@ -76,10 +112,25 @@ Settings are applied in the following order (highest to lowest priority):
 ## Development
 
 This project uses:
-- **Embassy**: Async runtime for embedded Rust
+- **Embassy**: Async runtime for embedded Rust with concurrent task management
 - **ESP-HAL**: Hardware abstraction for ESP32-C6
 - **OCPP-RS**: Open Charge Point Protocol implementation
 - **Embassy-Net**: Networking stack with WiFi and MQTT support
+- **Rust-MQTT**: Lightweight MQTT client for embedded systems
+
+### Architecture
+The system is built around Embassy async tasks:
+- **Network Stack**: WiFi connection management and IP configuration
+- **MQTT Client**: Bidirectional message handling with 2048-byte message support
+- **OCPP Handler**: Incoming message classification and processing
+- **Hardware Tasks**: GPIO monitoring for cable detection, card swipes, and relay control
+- **Periodic Tasks**: Heartbeat transmission and boot notifications
+
+### Memory Management
+- **Heap Size**: 64KB allocated for dynamic memory
+- **Message Buffers**: 2048-byte capacity for larger OCPP messages
+- **Channel Queues**: 5-message capacity for MQTT send/receive operations
+- **Static Allocation**: Embassy static cells for zero-allocation async runtime
 
 ## Security Note
 
