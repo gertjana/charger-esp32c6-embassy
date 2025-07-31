@@ -15,3 +15,6 @@ serial = "esp32c6-charger-001"
 broker = "broker.hivemq.com"
 port = 1883
 client_id = "esp32c6-charger-001"
+
+[ntp]
+server = "pool.ntp.org"

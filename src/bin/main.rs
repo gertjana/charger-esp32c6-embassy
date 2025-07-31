@@ -1,10 +1,5 @@
 #![no_std]
 #![no_main]
-#![deny(
-    clippy::mem_forget,
-    reason = "mem::forget is generally not safe to do with esp_hal types, especially those \
-    holding buffers for the duration of a data transfer."
-)]
 
 use core::fmt::Write;
 use core::sync::atomic::{AtomicU32, Ordering};
@@ -18,6 +13,7 @@ use esp32c6_embassy_charged::{
     config::Config,
     mk_static,
     network::{self, NetworkStack},
+    ntp,
 };
 use esp_hal::{
     clock::CpuClock,
@@ -49,16 +45,6 @@ static MQTT_RECEIVE_CHANNEL: Channel<CriticalSectionRawMutex, heapless::Vec<u8, 
 fn panic(_: &core::panic::PanicInfo) -> ! {
     loop {}
 }
-
-// spawns tasks to:
-// - network stack (done)
-// - checks card swipes (button) (done)
-// - charge cable connect (done)
-// - control relay (done)
-// - control a display (i2c SSD1306)
-// - MQTT client (done)
-//    - Send and Receive Queues
-// - OCPP Messages
 
 extern crate alloc;
 
@@ -107,13 +93,19 @@ async fn main(spawner: Spawner) {
     let config = Config::from_config();
     info!("Charger configuration loaded: {}", config.charger_name);
 
+    // Store NTP server before config is moved
+    let ntp_server = config.ntp_server;
+
     info!("Initializing network stack...");
     let network =
         network::NetworkStack::init(&spawner, timer1, rng, peripherals.WIFI, config).await;
     let network = mk_static!(NetworkStack, network);
-    network.wait_for_ip().await;
 
-    // Start all the different hardware relatedtasks
+    info!("Waiting for network connection...");
+    network.wait_for_ip().await;
+    info!("Network connected successfully");
+
+    // Start hardware-related tasks (can run independently of network)
     spawner
         .spawn(charger_led_task(charger, onboard_led_pin))
         .ok();
@@ -127,11 +119,40 @@ async fn main(spawner: Spawner) {
         .spawn(charger_relay_task(charger, charger_relay))
         .ok();
 
-    Timer::after(Duration::from_secs(1)).await;
+    // Perform initial NTP time synchronization
+    info!("Synchronizing time with NTP server...");
+    let mut sync_attempts = 0;
+    let max_sync_attempts = 3;
 
+    while !ntp::is_time_synced() && sync_attempts < max_sync_attempts {
+        sync_attempts += 1;
+        info!("NTP sync attempt {sync_attempts} of {max_sync_attempts}",);
+
+        match ntp::sync_time_with_ntp(network, ntp_server).await {
+            Ok(()) => {
+                info!("NTP: Initial time synchronization successful");
+                info!("NTP: Current time: {}", ntp::get_iso8601_time());
+                break;
+            }
+            Err(e) => {
+                warn!("NTP: Sync attempt {sync_attempts} failed: {e}");
+                if sync_attempts < max_sync_attempts {
+                    Timer::after(Duration::from_secs(5)).await;
+                }
+            }
+        }
+    }
+
+    if !ntp::is_time_synced() {
+        warn!(
+            "NTP: Failed to synchronize time after {max_sync_attempts} attempts, continuing anyway",
+        );
+    }
+
+    // Now start network-dependent tasks
     info!("Creating MQTT client...");
-    let rx_buffer = mk_static!([u8; 1024], [0; 1024]);
-    let tx_buffer = mk_static!([u8; 1024], [0; 1024]);
+    let rx_buffer = mk_static!([u8; 2048], [0; 2048]);
+    let tx_buffer = mk_static!([u8; 2048], [0; 2048]);
     let write_buffer = mk_static!([u8; 2048], [0; 2048]);
     let recv_buffer = mk_static!([u8; 2048], [0; 2048]);
 
@@ -153,10 +174,9 @@ async fn main(spawner: Spawner) {
         }
     }
 
+    // Start OCPP-related tasks
     spawner.spawn(ocpp_response_handler_task()).ok();
-
     spawner.spawn(heartbeat_task()).ok();
-
     spawner.spawn(boot_notification_task()).ok();
 
     let mut old_state = charger.get_state().await;
@@ -202,7 +222,11 @@ async fn mqtt_client_task(
                     // Message sent successfully
                 }
                 Err(e) => {
-                    warn!("Failed to send MQTT message: {e:?}");
+                    warn!("MQTT client task: Failed to send message: {e:?}");
+                    // Put the message back in the queue to retry later
+                    if MQTT_SEND_CHANNEL.try_send(message).is_err() {
+                        warn!("MQTT: Failed to requeue message for retry, queue full");
+                    }
                 }
             }
         }
@@ -223,7 +247,7 @@ async fn ocpp_response_handler_task() {
             Ok(message_str) => {
                 //TODO Parse the message as an CallResult or CallError
                 if message_str.contains("Heartbeat") {
-                    info!("OCPP: Received Heartbeat response with timestamp");
+                    info!("OCPP: Received Heartbeat response");
                 } else if message_str.contains("BootNotification") {
                     info!("OCPP: Received BootNotification response");
                 } else if message_str.contains("Authorize") {
@@ -349,5 +373,47 @@ async fn boot_notification_task() {
         MQTT_SEND_CHANNEL.send(msg_vec).await;
     } else {
         warn!("Boot Notification message too large for queue");
+    }
+}
+
+/// Task to synchronize time with NTP servers
+#[embassy_executor::task]
+async fn ntp_sync_task(network: &'static NetworkStack) {
+    info!("Task started: NTP Time Synchronization");
+
+    // Wait a bit for network to be ready
+    Timer::after(Duration::from_secs(10)).await;
+
+    let config = Config::from_config();
+
+    loop {
+        if !ntp::is_time_synced() || ntp::minutes_since_last_sync() > 60 {
+            info!(
+                "NTP: Attempting time synchronization with {}",
+                config.ntp_server
+            );
+
+            match ntp::sync_time_with_ntp(network, config.ntp_server).await {
+                Ok(()) => {
+                    info!("NTP: Time synchronized successfully");
+                    info!("NTP: Current time: {}", ntp::get_iso8601_time());
+                }
+                Err(e) => {
+                    warn!("NTP: Time synchronization failed: {e}");
+                }
+            }
+
+            // Sync every hour or retry every 5 minutes on failure
+            let wait_time = if ntp::is_time_synced() {
+                Duration::from_secs(3600) // 1 hour
+            } else {
+                Duration::from_secs(300) // 5 minutes
+            };
+
+            Timer::after(wait_time).await;
+        } else {
+            // Check again in 10 minutes
+            Timer::after(Duration::from_secs(600)).await;
+        }
     }
 }

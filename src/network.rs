@@ -172,16 +172,21 @@ impl NetworkStack {
     ) -> Result<(), ReasonCode> {
         let topic = self.app_config.charger_topic();
         info!(
-            "MQTT: Sending message to topic {}: {}",
+            "MQTT: Sending message to topic {} (size: {} bytes): {}",
             topic,
+            message.len(),
             str::from_utf8(message).unwrap_or("<invalid UTF-8>")
         );
         match client.send_message(&topic, message, QoS1, true).await {
-            Ok(()) => info!("MQTT: Message sent successfully"),
-            Err(e) => info!("MQTT: Failed to send message: {e:?}"),
-        };
-
-        Ok(())
+            Ok(()) => {
+                info!("MQTT: Message sent successfully");
+                Ok(())
+            }
+            Err(e) => {
+                warn!("MQTT: Failed to send message: {e:?}");
+                Err(e)
+            }
+        }
     }
 
     /// Receive messages from MQTT broker with connection health check

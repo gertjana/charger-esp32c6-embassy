@@ -5,7 +5,7 @@ use ocpp_rs::v16::{
     parse::Message,
 };
 
-use crate::config::Config;
+use crate::{config::Config, ntp};
 
 pub fn boot_notification(id: &str, config: &Config) -> Message {
     Message::Call(Call::new(
@@ -29,8 +29,7 @@ pub fn heartbeat(id: &str) -> Message {
 }
 
 pub fn start_transaction(id: &str, id_tag: &str) -> Message {
-    // hack until I get NTP time working
-    let datetime = DateTime::from_timestamp_nanos(0);
+    let timestamp = ntp::get_date_time().unwrap_or_else(|| DateTime::from_timestamp(0, 0).unwrap());
     Message::Call(Call::new(
         id.into(),
         Action::StartTransaction(StartTransaction {
@@ -38,21 +37,20 @@ pub fn start_transaction(id: &str, id_tag: &str) -> Message {
             id_tag: id_tag.into(),
             meter_start: 0,
             reservation_id: None,
-            timestamp: DateTimeWrapper::new(datetime),
+            timestamp: DateTimeWrapper::new(timestamp),
         }),
     ))
 }
 
 pub fn stop_transaction(id: &str, transaction_id: i32, id_tag: &str) -> Message {
-    // hack until I get NTP time working
-    let datetime = DateTime::from_timestamp_nanos(0);
+    let timestamp = ntp::get_date_time().unwrap_or_else(|| DateTime::from_timestamp(0, 0).unwrap());
     Message::Call(Call::new(
         id.into(),
         Action::StopTransaction(ocpp_rs::v16::call::StopTransaction {
             transaction_id,
             id_tag: Some(id_tag.into()),
             meter_stop: 0,
-            timestamp: DateTimeWrapper::new(datetime),
+            timestamp: DateTimeWrapper::new(timestamp),
             reason: None,
             transaction_data: None,
         }),
