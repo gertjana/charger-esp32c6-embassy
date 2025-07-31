@@ -132,6 +132,7 @@ async fn main(spawner: Spawner) {
             Ok(()) => {
                 info!("NTP: Initial time synchronization successful");
                 info!("NTP: Current time: {}", ntp::get_iso8601_time());
+                info!("NTP: Timing info: {}", ntp::get_timing_info());
                 break;
             }
             Err(e) => {
@@ -167,6 +168,9 @@ async fn main(spawner: Spawner) {
                 client
             );
             spawner.spawn(mqtt_client_task(network, client)).ok();
+
+            // Only start NTP sync task after MQTT client is successfully created
+            spawner.spawn(ntp_sync_task(network)).ok();
         }
         Err(e) => {
             warn!("Failed to create MQTT client: {e:?}");
@@ -178,6 +182,7 @@ async fn main(spawner: Spawner) {
     spawner.spawn(ocpp_response_handler_task()).ok();
     spawner.spawn(heartbeat_task()).ok();
     spawner.spawn(boot_notification_task()).ok();
+    // NTP sync task is now started only if MQTT client creation succeeds
 
     let mut old_state = charger.get_state().await;
 
@@ -381,39 +386,42 @@ async fn boot_notification_task() {
 async fn ntp_sync_task(network: &'static NetworkStack) {
     info!("Task started: NTP Time Synchronization");
 
-    // Wait a bit for network to be ready
-    Timer::after(Duration::from_secs(10)).await;
+    // Wait longer for MQTT to be fully established
+    Timer::after(Duration::from_secs(60)).await;
 
     let config = Config::from_config();
 
     loop {
-        if !ntp::is_time_synced() || ntp::minutes_since_last_sync() > 60 {
+        if !ntp::is_time_synced() || ntp::minutes_since_last_sync() > 240 {
+            // 4 hours instead of 1
             info!(
                 "NTP: Attempting time synchronization with {}",
                 config.ntp_server
             );
+            info!("NTP: Before sync - {}", ntp::get_timing_info());
 
             match ntp::sync_time_with_ntp(network, config.ntp_server).await {
                 Ok(()) => {
                     info!("NTP: Time synchronized successfully");
                     info!("NTP: Current time: {}", ntp::get_iso8601_time());
+                    info!("NTP: After sync - {}", ntp::get_timing_info());
                 }
                 Err(e) => {
                     warn!("NTP: Time synchronization failed: {e}");
                 }
             }
 
-            // Sync every hour or retry every 5 minutes on failure
+            // Sync every 4 hours or retry every 15 minutes on failure
             let wait_time = if ntp::is_time_synced() {
-                Duration::from_secs(3600) // 1 hour
+                Duration::from_secs(14400) // 4 hours
             } else {
-                Duration::from_secs(300) // 5 minutes
+                Duration::from_secs(900) // 15 minutes
             };
 
             Timer::after(wait_time).await;
         } else {
-            // Check again in 10 minutes
-            Timer::after(Duration::from_secs(600)).await;
+            // Check again in 30 minutes
+            Timer::after(Duration::from_secs(1800)).await;
         }
     }
 }

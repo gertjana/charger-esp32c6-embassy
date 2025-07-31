@@ -1,7 +1,8 @@
 use chrono::Utc;
+use core::fmt::Write;
 use core::sync::atomic::{AtomicU32, Ordering};
 use embassy_net::udp::UdpSocket;
-use embassy_time::Duration;
+use embassy_time::{Duration, Instant};
 use log::{error, info};
 
 use crate::network::NetworkStack;
@@ -9,8 +10,12 @@ use crate::network::NetworkStack;
 const NTP_EPOCH_OFFSET: u32 = 2_208_988_800;
 const NTP_PACKET_SIZE: usize = 48;
 const NTP_PORT: u16 = 123;
-static CURRENT_UNIX_TIME: AtomicU32 = AtomicU32::new(0);
-static LAST_SYNC_TIME: AtomicU32 = AtomicU32::new(0);
+
+// Store the NTP timestamp when we last synced
+static NTP_BASE_TIME: AtomicU32 = AtomicU32::new(0);
+// Store the system timer value when we last synced (milliseconds since boot)
+static SYSTEM_TIMER_BASE: AtomicU32 = AtomicU32::new(0);
+// Track if time has been synchronized
 static TIME_SYNCED: AtomicU32 = AtomicU32::new(0);
 
 #[repr(C, packed)]
@@ -119,11 +124,23 @@ pub async fn sync_time_with_ntp(
         .await
         .ok_or("Failed to resolve NTP server address")?;
 
-    // Create UDP socket buffers
-    let mut rx_meta = [embassy_net::udp::PacketMetadata::EMPTY; 16];
-    let mut rx_buffer = [0; 1024];
-    let mut tx_meta = [embassy_net::udp::PacketMetadata::EMPTY; 16];
-    let mut tx_buffer = [0; 1024];
+    // Create UDP socket buffers on the heap via alloc
+    let mut rx_meta = heapless::Vec::<embassy_net::udp::PacketMetadata, 4>::new();
+    rx_meta
+        .resize(4, embassy_net::udp::PacketMetadata::EMPTY)
+        .map_err(|_| "Failed to allocate rx_meta")?;
+    let mut rx_buffer = heapless::Vec::<u8, 512>::new();
+    rx_buffer
+        .resize(512, 0)
+        .map_err(|_| "Failed to allocate rx_buffer")?;
+    let mut tx_meta = heapless::Vec::<embassy_net::udp::PacketMetadata, 4>::new();
+    tx_meta
+        .resize(4, embassy_net::udp::PacketMetadata::EMPTY)
+        .map_err(|_| "Failed to allocate tx_meta")?;
+    let mut tx_buffer = heapless::Vec::<u8, 512>::new();
+    tx_buffer
+        .resize(512, 0)
+        .map_err(|_| "Failed to allocate tx_buffer")?;
 
     let mut socket = UdpSocket::new(
         *stack.stack,
@@ -157,12 +174,14 @@ pub async fn sync_time_with_ntp(
                 // Parse response
                 if let Some(response) = NtpPacket::from_bytes(&response_buffer) {
                     if let Some(unix_timestamp) = response.get_unix_timestamp() {
-                        // Update global time
-                        CURRENT_UNIX_TIME.store(unix_timestamp, Ordering::Relaxed);
-                        LAST_SYNC_TIME.store(unix_timestamp, Ordering::Relaxed);
+                        // Store NTP time and current system timer value
+                        let current_system_time = Instant::now().as_millis() as u32;
+
+                        NTP_BASE_TIME.store(unix_timestamp, Ordering::Relaxed);
+                        SYSTEM_TIMER_BASE.store(current_system_time, Ordering::Relaxed);
                         TIME_SYNCED.store(1, Ordering::Relaxed);
 
-                        info!("NTP sync successful. Unix timestamp: {unix_timestamp}");
+                        info!("NTP sync successful. Unix timestamp: {unix_timestamp}, System time: {current_system_time}ms");
                         Ok(())
                     } else {
                         error!("Invalid NTP timestamp received");
@@ -189,7 +208,20 @@ pub async fn sync_time_with_ntp(
 }
 
 pub fn get_current_unix_time() -> u32 {
-    CURRENT_UNIX_TIME.load(Ordering::Relaxed)
+    if !is_time_synced() {
+        return 0;
+    }
+
+    let ntp_base = NTP_BASE_TIME.load(Ordering::Relaxed);
+    let system_base = SYSTEM_TIMER_BASE.load(Ordering::Relaxed);
+    let current_system_time = Instant::now().as_millis() as u32;
+
+    // Calculate elapsed time in seconds since NTP sync
+    let elapsed_ms = current_system_time.wrapping_sub(system_base);
+    let elapsed_seconds = elapsed_ms / 1000;
+
+    // Return NTP time + elapsed time
+    ntp_base + elapsed_seconds
 }
 
 /// Format Unix timestamp as ISO8601 string (simplified)
@@ -236,7 +268,11 @@ pub fn get_iso8601_time() -> heapless::String<32> {
 
 pub fn get_date_time() -> Option<chrono::DateTime<Utc>> {
     let timestamp = get_current_unix_time();
-    chrono::DateTime::<Utc>::from_timestamp(timestamp as i64, 0)
+    if timestamp == 0 {
+        None
+    } else {
+        chrono::DateTime::<Utc>::from_timestamp(timestamp as i64, 0)
+    }
 }
 
 pub fn is_time_synced() -> bool {
@@ -244,14 +280,38 @@ pub fn is_time_synced() -> bool {
 }
 
 pub fn minutes_since_last_sync() -> u32 {
-    let current_time = CURRENT_UNIX_TIME.load(Ordering::Relaxed);
-    let last_sync = LAST_SYNC_TIME.load(Ordering::Relaxed);
-
-    if current_time == 0 || last_sync == 0 {
+    if !is_time_synced() {
         return u32::MAX; // No sync yet
     }
 
-    current_time.saturating_sub(last_sync) / 60
+    let system_base = SYSTEM_TIMER_BASE.load(Ordering::Relaxed);
+    let current_system_time = Instant::now().as_millis() as u32;
+
+    // Calculate elapsed time in minutes since NTP sync
+    let elapsed_ms = current_system_time.wrapping_sub(system_base);
+    elapsed_ms / (1000 * 60) // Convert to minutes
+}
+
+/// Get detailed timing information for debugging
+pub fn get_timing_info() -> heapless::String<128> {
+    let mut result = heapless::String::new();
+
+    if !is_time_synced() {
+        let _ = result.push_str("NTP: Not synced");
+        return result;
+    }
+
+    let ntp_base = NTP_BASE_TIME.load(Ordering::Relaxed);
+    let system_base = SYSTEM_TIMER_BASE.load(Ordering::Relaxed);
+    let current_system_time = Instant::now().as_millis() as u32;
+    let current_unix = get_current_unix_time();
+
+    let elapsed_ms = current_system_time.wrapping_sub(system_base);
+    let elapsed_sec = elapsed_ms / 1000;
+
+    let _ = write!(result, "NTP:{ntp_base}, SysBase:{system_base}ms, Current:{current_system_time}ms, Elapsed:{elapsed_sec}s, Unix:{current_unix}");
+
+    result
 }
 
 /// Helper function to write u32 to string with zero padding
