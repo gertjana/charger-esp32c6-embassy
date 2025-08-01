@@ -1,0 +1,229 @@
+vars: {
+  d2-config: {
+    sketch: true
+    layout-engine: elk
+  }
+}
+direction: right
+classes: {
+  task: {
+    style: {
+      fill: lightgreen
+    }
+  } 
+  channel: {
+    style: {
+      fill: pink
+    }
+    shape: queue
+    width: 200
+  }
+  client: {style: {fill: yellow}}
+  ocpp: {
+    style: {fill: lightblue}
+  }
+  network: {
+    # width: 550
+  }
+  app: {
+    style: {fill: "#ddddee"}
+  }
+  fsm: {
+    style: {fill: "#6699cc"}
+  }
+  legend: {
+    style: {
+      stroke: "#ddddee"
+      fill: "#ddddee"
+    }
+  }
+  charger: {
+    label: ""
+    icon: "./charging-station.png"
+    style: {
+      fill: "#6699cc"
+      stroke: "#6699cc"
+    }
+  }
+  placeholder: {
+    label: ""
+    style: {
+      fill: "#6699cc"
+      stroke: "#6699cc"
+    }
+    width: 120
+    height: 60
+  }
+  state-box: {
+    width: 120
+    height: 60
+  }
+  states: {
+    label: ""
+    style: {
+      fill: "#6699cc"
+      stroke: "#6699cc"
+    }    
+  }
+}
+
+Main.class: app
+Main: Application Clients, Tasks and Channels {
+  grid-columns: 3
+  Charger State Machine.class: fsm
+  Charger State Machine: {
+    States.class: states
+    States {
+      grid-rows: 2
+      grid-gap: 15
+      available.class: state-bo
+      available: {style: {fill: lightgreen}}
+      occupied: {width: 120; style: {fill: lightyellow}}
+      authorizing: {width: 120; style: {fill: orange}}
+      charging.class: state-box
+      charging: {style: {fill: lightblue}}
+      error.class: state-box
+      error: {style: {fill: pink}}
+      off.class: state-box
+      off: {style: {fill: lightgrey}}
+    }
+    charger.class: charger
+  }
+  State Machine Handler.class: task
+  State Machine Handler.box: |md
+    - transitions Charger state from incoming events and current state. 
+    - propagates resulting state 
+  |
+  Network.class: network
+  Network: {
+    grid-columns: 1
+    grid-gap: 45
+    Wifi Connection.class: task
+    Wifi Connection.box: |md
+      Handles opening and reconnecting the wifi connection
+    |
+    Runner.class: task
+    Runner.bos: |md
+      runs embassy's network stack
+    |
+  }
+  NTP CLient.class: client
+  NTP CLient.box: |md
+    - handles communication with NTP Server
+    - uses local timer for time since last sync point 
+  |
+  NTP Sync.class: task
+  NTP Sync.box: |md
+    periodically syncs time with NTP Server
+  |
+  State Out Channel.class: channel
+  State Out Channel.box: |md
+    Threadsafe channel for propagating state changes
+  |
+  State In Channel.class: channel
+  State In Channel.box: |md
+    Threadsafe channel to send events that changes state
+  |
+  OCPP Response Handler.class: ocpp
+  OCPP Response Handler.box: |md
+    receives and handles ocpp Responses
+  |
+  OCPP Receive Channel.class: channel
+  OCPP Receive Channel.box: |md
+    Threadsafe channel to handle incoming messages
+  |
+  MQTT Client.class: client
+  MQTT Client.box: |md
+    - handles communication with an MQTT Broker
+    - TODO: Secure connection with TLS
+  |
+  OCPP Send Channel.class: channel
+  OCPP Send Channel.box: |md
+    Threadsafe channel to handle outgoing messages
+  |
+  Hardware: {
+    grid-columns: 2
+    grid-rows: 5
+    Led Handler.class: task
+    Led Handler.box: |md
+      - controls multicolor led
+      - GPIO
+    |
+    Relais Handler.class: task
+    Relais Handler.box: |md
+      - controls the relais
+      - GPIO
+    |
+    Swipe Handler.class: task
+    Swipe Handler.box: |md
+      - Monitors rfid card swipes
+      - SPI
+    |
+    Cable Detection Handler.class: task
+    Cable Detection Handler.box: |md
+      - Monitors cable connection status
+      - GPIO
+    |
+    Display Handler.class: task
+    Display Handler.box: |md
+      - Display Charger State and Network info
+      - runs in main loop
+    |
+    Led {
+      label: ""
+      icon: "./led.png"
+    }
+    Relais {
+      label: ""
+      icon: "./circuit.png"
+    }
+    RFID {
+      label: ""
+      icon: "./money.png"
+    }
+    Cable {
+      label: ""
+      icon: "./vehicle.png"
+    }
+    Display {
+      label: ""
+      icon: "./display-frame.png"
+    }
+  }
+  Statusnotification Handler.class: ocpp
+  Statusnotification Handler.box: |md
+    Sends status notification on charger state changes
+  |
+  Bootnotification Handler.class: ocpp
+  Bootnotification Handler.box: |md
+    Sends BootNotification Request on startup
+  |
+  HeartBeat Handler.class: ocpp
+  HeartBeat Handler.box: |md
+    Periodically sends Heartbeat Request
+  |
+  State Out Channel -> Hardware.Led Handler -> Hardware.LED
+  State Out Channel -> Hardware.Relais Handler -> Hardware.Relais
+  State In Channel -> State Machine Handler -> State Out Channel
+  Hardware.RFID -> Hardware.Swipe Handler -> State In Channel
+  Hardware.Cable -> Hardware.Cable Detection Handler -> State In Channel
+  Hardware.Display Handler -> Hardware.Display
+  OCPP Receive Channel -> OCPP Response Handler -> State In Channel
+  NTP Sync -> NTP CLient
+  OCPP Send Channel -> MQTT Client -> OCPP Receive Channel
+  HeartBeat Handler -> OCPP Send Channel
+  Bootnotification Handler -> OCPP Send Channel
+  State Machine Handler <-> Charger State Machine
+  State Out Channel -> Statusnotification Handler -> OCPP Send Channel
+}
+
+Legend.class: legend
+Legend: {
+  grid-rows: 1
+  near: bottom-center
+  task.class: task
+  channel.class: channel
+  client.class: client
+  ocpp.class: ocpp
+  fsm.class: fsm
+}

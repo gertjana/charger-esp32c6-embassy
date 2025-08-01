@@ -121,10 +121,14 @@ This project uses:
 ### Architecture
 The system is built around Embassy async tasks:
 - **Network Stack**: WiFi connection management and IP configuration
-- **MQTT Client**: Bidirectional message handling with 2048-byte message support
-- **OCPP Handler**: Incoming message classification and processing
-- **Hardware Tasks**: GPIO monitoring for cable detection, card swipes, and relay control
+- **MQTT Client**: Bidirectional message of OCPP Messages
+- **NTP Client**: Queries NTP Server every 4 hours and syncing with local timer in the ESP32-C6
+- **OCPP 1.6**: minimum support for OCPP 1.6 to support basic Charging behaviour
+- **Hardware Tasks**: GPIO monitoring for cable detection, card swipes. Led and Relay control and update a small display
 - **Periodic Tasks**: Heartbeat transmission and boot notifications
+
+![Application Diagram](./architecture/app_diagram.svg)
+
 
 ### Memory Management
 - **Heap Size**: 64KB allocated for dynamic memory
