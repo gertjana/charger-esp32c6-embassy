@@ -127,7 +127,7 @@ The system is built around Embassy async tasks:
 - **Hardware Tasks**: GPIO monitoring for cable detection, card swipes. Led and Relay control and update a small display
 - **Periodic Tasks**: Heartbeat transmission and boot notifications
 
-![Application Diagram](./architecture/app_diagram.svg)
+![Application Diagram](./architecture/app_diagram.png)
 
 
 ### Memory Management
