@@ -306,10 +306,7 @@ pub fn get_timing_info() -> heapless::String<128> {
         
         write!(
             result,
-            "Synced: {}s ago, Unix: {}, Boot: {}ms",
-            elapsed_seconds,
-            current_unix_time,
-            current_system_time
+            "Synced: {elapsed_seconds}s ago, Unix: {current_unix_time}, Boot: {current_system_time}ms",
         ).ok();
     } else {
         write!(result, "Time not synced yet").ok();

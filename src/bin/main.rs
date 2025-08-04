@@ -6,7 +6,7 @@ use core::sync::atomic::{AtomicU32, Ordering};
 use embassy_executor::Spawner;
 use embassy_net::tcp::TcpSocket;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
-use embassy_time::{Duration, Timer};
+use embassy_time::{Duration, Instant, Timer};
 use esp32c6_embassy_charged::messages;
 use esp32c6_embassy_charged::{
     charger::{Charger, ChargerInput, ChargerState},
@@ -224,6 +224,7 @@ async fn main(spawner: Spawner) {
     }
 
     info!("Starting main loop...");
+    let mut last_display_update = Instant::now();
     loop {
         if let Some(ref mut display) = display_manager {
             if last_display_update.elapsed() >= Duration::from_millis(900) {
@@ -245,7 +246,7 @@ async fn main(spawner: Spawner) {
             info!("Charger state changed: {}", current_state.as_str());
             old_state = current_state;
         }
-        Timer::after(Duration::from_secs(1)).await;
+        Timer::after(Duration::from_millis(100)).await;
     }
 }
 

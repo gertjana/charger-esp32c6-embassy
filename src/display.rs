@@ -156,7 +156,7 @@ where
         if crate::ntp::is_time_synced() {
             let local_time = crate::ntp::get_local_time_formatted(config.timezone_offset_hours);
             let local_date = crate::ntp::get_local_date_formatted(config.timezone_offset_hours);
-            let _ = write!(time_line, "{} {}", local_date, local_time);
+            let _ = write!(time_line, "{local_date} {local_time}");
         } else {
             let _ = write!(time_line, "Time Not Synced");
         }
