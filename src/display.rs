@@ -131,11 +131,26 @@ where
             .draw(&mut self.display)
             .map_err(|_| "Failed to draw serial")?;
 
+        // horizontal line
+        let stroke_style = PrimitiveStyleBuilder::new()
+            .stroke_color(BinaryColor::On)
+            .stroke_width(1)
+            .build();
+
+        let left_line = Line::new(
+            Point::new(0, 12), // Start point
+            Point::new(128, 12), // End point
+        );
+        left_line
+            .into_styled(stroke_style)
+            .draw(&mut self.display)
+            .map_err(|_| "Failed to draw left line")?;
+
         // Line 2: Current state
         let mut state_line = heapless::String::<21>::new();
         let _ = write!(state_line, "{}", charger_state.as_str());
 
-        Text::with_baseline(&state_line, Point::new(0, 12), text_style, Baseline::Top)
+        Text::with_baseline(&state_line, Point::new(0, 14), text_style, Baseline::Top)
             .draw(&mut self.display)
             .map_err(|_| "Failed to draw state")?;
 
