@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+extern crate alloc;
 use core::fmt::Write;
 use core::sync::atomic::{AtomicU32, Ordering};
 use embassy_executor::Spawner;
@@ -18,9 +19,11 @@ use esp32c6_embassy_charged::{
 use esp_hal::{
     clock::CpuClock,
     gpio::{Input, InputConfig, Level, Output, Pull},
+    i2c::master::{Config as I2cConfig, I2c},
     timer::{systimer::SystemTimer, timg::TimerGroup},
     i2c::master::{I2c, Config as I2cConfig}
 };
+
 use log::{info, warn};
 use ocpp_rs::v16::parse::{self};
 use rust_mqtt::client::client::MqttClient;
@@ -46,8 +49,6 @@ static MQTT_RECEIVE_CHANNEL: Channel<CriticalSectionRawMutex, heapless::Vec<u8, 
 fn panic(_: &core::panic::PanicInfo) -> ! {
     loop {}
 }
-
-extern crate alloc;
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
@@ -95,7 +96,6 @@ async fn main(spawner: Spawner) {
                         warn!("Failed to draw logo: {e}");
                     }
                 }
-
                 Some(display)
             }
             Err(e) => {
@@ -127,7 +127,7 @@ async fn main(spawner: Spawner) {
     let config = Config::from_config();
     info!("Charger configuration loaded: {}", config.charger_name);
 
-    // Store NTP server before config is moved
+    // Store values we need before config is moved
     let ntp_server = config.ntp_server;
 
     info!("Initializing network stack...");
@@ -218,6 +218,7 @@ async fn main(spawner: Spawner) {
     spawner.spawn(boot_notification_task()).ok();
 
     let mut old_state = charger.get_state().await;
+    let mut last_display_update = Instant::now();
 
     if display_manager.is_some() {
         Timer::after(Duration::from_secs(3)).await;

@@ -159,6 +159,7 @@ where
             let _ = write!(time_line, "{local_date} {local_time}");
         } else {
             let _ = write!(time_line, "Time Not Synced");
+
         }
 
         Text::with_baseline(&time_line, Point::new(0, 48), text_style, Baseline::Top)
