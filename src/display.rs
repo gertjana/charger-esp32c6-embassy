@@ -118,18 +118,6 @@ where
             .text_color(BinaryColor::On)
             .build();
 
-        // // Line 1: Charger name (truncated if too long)
-        // let mut name_line = heapless::String::<21>::new(); // 128px / 6px per char = ~21 chars
-        // if config.charger_name.len() > 20 {
-        //     let _ = write!(name_line, "{}...", &config.charger_name[..17]);
-        // } else {
-        //     let _ = write!(name_line, "{}", config.charger_name);
-        // }
-
-        // Text::with_baseline(&name_line, Point::new(0, 0), text_style, Baseline::Top)
-        //     .draw(&mut self.display)
-        //     .map_err(|_| "Failed to draw charger name")?;
-
         // Line 1: Serial number
         let mut serial_line = heapless::String::<21>::new();
         if config.charger_serial.len() > 20 {
@@ -142,7 +130,7 @@ where
             .draw(&mut self.display)
             .map_err(|_| "Failed to draw serial")?;
 
-        // Line 23: IP Address
+        // Line 2: IP Address
         let mut ip_line = heapless::String::<21>::new();
         if let Some(ip) = network.get_ip_address() {
             let _ = write!(ip_line, "{ip}");
