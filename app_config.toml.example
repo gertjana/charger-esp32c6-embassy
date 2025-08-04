@@ -18,3 +18,6 @@ client_id = "esp32c6-charger-001"
 
 [ntp]
 server = "pool.ntp.org"
+
+[display]
+timezone_offset_hours = 0
