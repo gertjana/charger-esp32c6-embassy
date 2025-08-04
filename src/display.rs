@@ -152,10 +152,12 @@ where
 
         // Line 5: Current time (if NTP is synced)
         let mut time_line = heapless::String::<21>::new();
+        // Minimum length for ISO8601 format "YYYY-MM-DDTHH:MM:SSZ"
+        const ISO8601_MIN_LEN: usize = 19;
         if crate::ntp::is_time_synced() {
             let time_str = crate::ntp::get_iso8601_time();
             // Extract just the time part (HH:MM:SS)
-            if time_str.len() >= 19 {
+            if time_str.len() >= ISO8601_MIN_LEN {
                 let time_part = &time_str[11..19]; // Extract "HH:MM:SS" from "YYYY-MM-DDTHH:MM:SSZ"
                 let _ = write!(time_line, "{time_part}");
             } else {
