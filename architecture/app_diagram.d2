@@ -204,7 +204,7 @@ Main: Application Clients, Tasks and Channels {
   |
   State Out Channel -> Hardware.Led Handler -> Hardware.LED
   State Out Channel -> Hardware.Relais Handler -> Hardware.Relais
-  State In Channel -> State Machine Handler -> State Out Channel
+  State In Channel -> State Machine Handler -> State Out Channel 
   Hardware.RFID -> Hardware.Swipe Handler -> State In Channel
   Hardware.Cable -> Hardware.Cable Detection Handler -> State In Channel
   Hardware.Display Handler -> Hardware.Display
@@ -215,6 +215,8 @@ Main: Application Clients, Tasks and Channels {
   Bootnotification Handler -> OCPP Send Channel
   State Machine Handler <-> Charger State Machine
   State Out Channel -> Statusnotification Handler -> OCPP Send Channel
+  NTP Client <-> Network
+  MQTT Client <-> Network
 }
 
 Legend.class: legend

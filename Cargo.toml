@@ -67,6 +67,13 @@ rust-mqtt = { version = "0.3.0", default-features = false }
 
 ocpp_rs = "0.2.5"
 
+# Display dependencies
+ssd1306 = { version = "0.10.0", features = ["graphics"] }
+embedded-graphics = "0.8.1"
+embedded-hal = "1.0.0"
+embedded-hal-async = "1.0.0"
+tinybmp = "0.5.0"
+
 [profile.dev]
 # Rust debug is too slow.
 # For debug builds always builds with some optimization

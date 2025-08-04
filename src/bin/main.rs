@@ -19,6 +19,7 @@ use esp_hal::{
     clock::CpuClock,
     gpio::{Input, InputConfig, Level, Output, Pull},
     timer::{systimer::SystemTimer, timg::TimerGroup},
+    i2c::master::{I2c, Config as I2cConfig}
 };
 use log::{info, warn};
 use ocpp_rs::v16::parse::{self};
@@ -70,6 +71,39 @@ async fn main(spawner: Spawner) {
 
     let rng = esp_hal::rng::Rng::new(peripherals.RNG);
     let timer1 = TimerGroup::new(peripherals.TIMG0);
+
+    // I2C Setup
+    let i2c = I2c::new(peripherals.I2C0, I2cConfig::default())
+        .unwrap()
+        .into_async()
+        .with_sda(peripherals.GPIO22)
+        .with_scl(peripherals.GPIO23);
+
+    // Initialize SSD1306 display
+    info!("Initializing SSD1306 display...");
+    let mut display_manager: Option<esp32c6_embassy_charged::display::DisplayManager<_>> =
+        match esp32c6_embassy_charged::display::DisplayManager::new(i2c) {
+            Ok(mut display) => {
+                info!("Display initialized successfully");
+
+                // Draw the startup logo
+                match display.draw_logo() {
+                    Ok(()) => {
+                        info!("Logo displayed successfully");
+                    }
+                    Err(e) => {
+                        warn!("Failed to draw logo: {e}");
+                    }
+                }
+
+                Some(display)
+            }
+            Err(e) => {
+                warn!("Failed to initialize display: {e}");
+                warn!("Continuing without display functionality");
+                None
+            }
+        };
 
     // GPIO Setup
     let onboard_led_pin = Output::new(peripherals.GPIO15, Level::Low, Default::default());
@@ -182,13 +216,30 @@ async fn main(spawner: Spawner) {
     spawner.spawn(ocpp_response_handler_task()).ok();
     spawner.spawn(heartbeat_task()).ok();
     spawner.spawn(boot_notification_task()).ok();
-    // NTP sync task is now started only if MQTT client creation succeeds
 
     let mut old_state = charger.get_state().await;
 
+    if display_manager.is_some() {
+        Timer::after(Duration::from_secs(3)).await;
+    }
+
     info!("Starting main loop...");
     loop {
-        // TODO update display with current state
+        if let Some(ref mut display) = display_manager {
+            if last_display_update.elapsed() >= Duration::from_millis(900) {
+                let temp_config = Config::from_config();
+                match display.update_display(&temp_config, network, old_state) {
+                    Ok(()) => {
+                        // Display updated successfully
+                    }
+                    Err(e) => {
+                        warn!("Failed to update display: {e}");
+                    }
+                }
+                last_display_update = Instant::now();
+            }
+        }
+
         let current_state = charger.get_state().await;
         if current_state != old_state {
             info!("Charger state changed: {}", current_state.as_str());

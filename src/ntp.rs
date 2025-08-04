@@ -1,4 +1,4 @@
-use chrono::Utc;
+use chrono::{Utc, Timelike, Datelike};
 use core::fmt::Write;
 use core::sync::atomic::{AtomicU32, Ordering};
 use embassy_net::udp::UdpSocket;
@@ -295,23 +295,82 @@ pub fn minutes_since_last_sync() -> u32 {
 /// Get detailed timing information for debugging
 pub fn get_timing_info() -> heapless::String<128> {
     let mut result = heapless::String::new();
-
-    if !is_time_synced() {
-        let _ = result.push_str("NTP: Not synced");
-        return result;
+    
+    if is_time_synced() {
+        let ntp_base = NTP_BASE_TIME.load(Ordering::Relaxed);
+        let system_base = SYSTEM_TIMER_BASE.load(Ordering::Relaxed);
+        let current_system_time = Instant::now().as_millis() as u32;
+        let elapsed_ms = current_system_time.wrapping_sub(system_base);
+        let elapsed_seconds = elapsed_ms / 1000;
+        let current_unix_time = ntp_base + elapsed_seconds;
+        
+        write!(
+            result,
+            "Synced: {}s ago, Unix: {}, Boot: {}ms",
+            elapsed_seconds,
+            current_unix_time,
+            current_system_time
+        ).ok();
+    } else {
+        write!(result, "Time not synced yet").ok();
     }
-
-    let ntp_base = NTP_BASE_TIME.load(Ordering::Relaxed);
-    let system_base = SYSTEM_TIMER_BASE.load(Ordering::Relaxed);
-    let current_system_time = Instant::now().as_millis() as u32;
-    let current_unix = get_current_unix_time();
-
-    let elapsed_ms = current_system_time.wrapping_sub(system_base);
-    let elapsed_sec = elapsed_ms / 1000;
-
-    let _ = write!(result, "NTP:{ntp_base}, SysBase:{system_base}ms, Current:{current_system_time}ms, Elapsed:{elapsed_sec}s, Unix:{current_unix}");
-
+    
     result
+}
+
+/// Get local time formatted as a string with timezone offset applied
+/// Returns UTC time if no valid timezone offset is provided
+pub fn get_local_time_formatted(timezone_offset_hours: i8) -> heapless::String<32> {
+    if let Some(utc_datetime) = get_date_time() {
+        // Apply timezone offset
+        let offset_seconds = timezone_offset_hours as i32 * 3600;
+        let local_offset = chrono::FixedOffset::east_opt(offset_seconds)
+            .unwrap_or_else(|| chrono::FixedOffset::east_opt(0).unwrap()); // Default to UTC if invalid
+        
+        let local_datetime = utc_datetime.with_timezone(&local_offset);
+        let mut result = heapless::String::new();
+        
+        write!(
+            result,
+            "{:02}:{:02}:{:02}",
+            local_datetime.hour(),
+            local_datetime.minute(),
+            local_datetime.second()
+        ).ok();
+        
+        result
+    } else {
+        let mut result = heapless::String::new();
+        result.push_str("--:--:--").ok();
+        result
+    }
+}
+
+/// Get local date formatted as a string with timezone offset applied
+/// Returns UTC date if no valid timezone offset is provided
+pub fn get_local_date_formatted(timezone_offset_hours: i8) -> heapless::String<16> {
+    if let Some(utc_datetime) = get_date_time() {
+        // Apply timezone offset
+        let offset_seconds = timezone_offset_hours as i32 * 3600;
+        let local_offset = chrono::FixedOffset::east_opt(offset_seconds)
+            .unwrap_or_else(|| chrono::FixedOffset::east_opt(0).unwrap()); // Default to UTC if invalid
+        
+        let local_datetime = utc_datetime.with_timezone(&local_offset);
+        let mut result = heapless::String::new();
+        
+        write!(
+            result,
+            "{:02}/{:02}",
+            local_datetime.month(),
+            local_datetime.day()
+        ).ok();
+        
+        result
+    } else {
+        let mut result = heapless::String::new();
+        result.push_str("--/--").ok();
+        result
+    }
 }
 
 /// Helper function to write u32 to string with zero padding
