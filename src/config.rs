@@ -14,7 +14,7 @@ pub struct Config {
     pub mqtt_port: u16,
     pub mqtt_client_id: &'static str,
     pub ntp_server: &'static str,
-    pub timezone_offset_hours: i8,  // Timezone offset from UTC in hours (e.g., +1 for CET, -5 for EST)
+    pub timezone_offset_hours: i8, // Timezone offset from UTC in hours (e.g., +1 for CET, -5 for EST)
 }
 
 /// Simple TOML value extraction functions
@@ -76,9 +76,10 @@ impl Config {
             extract_toml_string(CONFIG_TOML, "mqtt", "client_id").unwrap_or("esp32c6-charger-001");
         let toml_ntp_server =
             extract_toml_string(CONFIG_TOML, "ntp", "server").unwrap_or("pool.ntp.org");
-        let toml_timezone_offset = extract_toml_integer(CONFIG_TOML, "display", "timezone_offset_hours")
-            .map(|offset| offset as i8)
-            .unwrap_or(0);
+        let toml_timezone_offset =
+            extract_toml_integer(CONFIG_TOML, "display", "timezone_offset_hours")
+                .map(|offset| offset as i8)
+                .unwrap_or(0);
 
         Self {
             wifi_ssid: option_env!("CHARGER_WIFI_SSID").unwrap_or(toml_wifi_ssid),

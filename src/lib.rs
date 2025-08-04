@@ -7,4 +7,3 @@ pub mod messages;
 pub mod network;
 pub mod ntp;
 pub mod utils;
-pub mod display;

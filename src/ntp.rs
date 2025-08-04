@@ -1,4 +1,4 @@
-use chrono::{Utc, Timelike, Datelike};
+use chrono::{Datelike, Timelike, Utc};
 use core::fmt::Write;
 use core::sync::atomic::{AtomicU32, Ordering};
 use embassy_net::udp::UdpSocket;
@@ -295,7 +295,7 @@ pub fn minutes_since_last_sync() -> u32 {
 /// Get detailed timing information for debugging
 pub fn get_timing_info() -> heapless::String<128> {
     let mut result = heapless::String::new();
-    
+
     if is_time_synced() {
         let ntp_base = NTP_BASE_TIME.load(Ordering::Relaxed);
         let system_base = SYSTEM_TIMER_BASE.load(Ordering::Relaxed);
@@ -303,7 +303,7 @@ pub fn get_timing_info() -> heapless::String<128> {
         let elapsed_ms = current_system_time.wrapping_sub(system_base);
         let elapsed_seconds = elapsed_ms / 1000;
         let current_unix_time = ntp_base + elapsed_seconds;
-        
+
         write!(
             result,
             "Synced: {elapsed_seconds}s ago, Unix: {current_unix_time}, Boot: {current_system_time}ms",
@@ -311,7 +311,7 @@ pub fn get_timing_info() -> heapless::String<128> {
     } else {
         write!(result, "Time not synced yet").ok();
     }
-    
+
     result
 }
 
@@ -323,18 +323,19 @@ pub fn get_local_time_formatted(timezone_offset_hours: i8) -> heapless::String<3
         let offset_seconds = timezone_offset_hours as i32 * 3600;
         let local_offset = chrono::FixedOffset::east_opt(offset_seconds)
             .unwrap_or_else(|| chrono::FixedOffset::east_opt(0).unwrap()); // Default to UTC if invalid
-        
+
         let local_datetime = utc_datetime.with_timezone(&local_offset);
         let mut result = heapless::String::new();
-        
+
         write!(
             result,
             "{:02}:{:02}:{:02}",
             local_datetime.hour(),
             local_datetime.minute(),
             local_datetime.second()
-        ).ok();
-        
+        )
+        .ok();
+
         result
     } else {
         let mut result = heapless::String::new();
@@ -351,17 +352,18 @@ pub fn get_local_date_formatted(timezone_offset_hours: i8) -> heapless::String<1
         let offset_seconds = timezone_offset_hours as i32 * 3600;
         let local_offset = chrono::FixedOffset::east_opt(offset_seconds)
             .unwrap_or_else(|| chrono::FixedOffset::east_opt(0).unwrap()); // Default to UTC if invalid
-        
+
         let local_datetime = utc_datetime.with_timezone(&local_offset);
         let mut result = heapless::String::new();
-        
+
         write!(
             result,
             "{:02}/{:02}",
             local_datetime.month(),
             local_datetime.day()
-        ).ok();
-        
+        )
+        .ok();
+
         result
     } else {
         let mut result = heapless::String::new();

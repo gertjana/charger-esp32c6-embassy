@@ -21,7 +21,6 @@ use esp_hal::{
     gpio::{Input, InputConfig, Level, Output, Pull},
     i2c::master::{Config as I2cConfig, I2c},
     timer::{systimer::SystemTimer, timg::TimerGroup},
-    i2c::master::{I2c, Config as I2cConfig}
 };
 
 use log::{info, warn};
@@ -225,7 +224,6 @@ async fn main(spawner: Spawner) {
     }
 
     info!("Starting main loop...");
-    let mut last_display_update = Instant::now();
     loop {
         if let Some(ref mut display) = display_manager {
             if last_display_update.elapsed() >= Duration::from_millis(900) {

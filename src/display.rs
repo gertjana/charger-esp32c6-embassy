@@ -138,7 +138,7 @@ where
             .build();
 
         let left_line = Line::new(
-            Point::new(0, 12), // Start point
+            Point::new(0, 12),   // Start point
             Point::new(128, 12), // End point
         );
         left_line
@@ -154,7 +154,7 @@ where
             .draw(&mut self.display)
             .map_err(|_| "Failed to draw state")?;
 
-            // Line 4: IP Address
+        // Line 4: IP Address
         let mut ip_line = heapless::String::<21>::new();
         if let Some(ip) = network.get_ip_address() {
             let _ = write!(ip_line, "{ip}");
@@ -174,7 +174,6 @@ where
             let _ = write!(time_line, "{local_date} {local_time}");
         } else {
             let _ = write!(time_line, "Time Not Synced");
-
         }
 
         Text::with_baseline(&time_line, Point::new(0, 48), text_style, Baseline::Top)
@@ -215,7 +214,7 @@ where
 
         let left_line = Line::new(
             Point::new(center_x - 15, center_y), // Start point
-            Point::new(center_x - 2, center_y), // End point
+            Point::new(center_x - 2, center_y),  // End point
         );
         left_line
             .into_styled(stroke_style)
@@ -241,7 +240,7 @@ where
             .map_err(|_| "Failed to draw vertical up line")?;
 
         let right_line = Line::new(
-            Point::new(center_x + 2, center_y), // Start point
+            Point::new(center_x + 2, center_y),  // Start point
             Point::new(center_x + 20, center_y), // End point
         );
         right_line
