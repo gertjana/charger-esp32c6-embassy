@@ -96,25 +96,11 @@ Main: Application Clients, Tasks and Channels {
     charger.class: charger 
   }
   State Machine Handler.class: task
-  State Machine Handler{
-    grid-columns: 1
-    grid-gap: 0
-    box: |md
-      - handles state transitions based on input events
-      - uses a finite state machine to manage charger states
-      - communicates state changes via State Out Channel
-      |
-    code.class: code
-    code: |rust
-      fn transition(state: ChargerState, event: InputEvent) -> ChargerState {
-        match (state, event) {
-          (ChargerState::Available, InputEvent::InsertCable) => ChargerState::Occupied,
-          (ChargerState::Occupied, InputEvent::RemoveCable) => ChargerState::Available,
-          // other transitions
-          _ => ChargerState::Faulted,
-        }
-      }| 
-  }
+  State Machine Handler.box: |md
+    - handles state transitions based on input events
+    - uses a finite state machine to manage charger states
+    - communicates state changes via State Out Channel
+  |
   Network.class: network
   Network: {
     grid-columns: 1
