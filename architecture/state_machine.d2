@@ -1,3 +1,9 @@
+vars: {
+  d2-config: {
+    # sketch: true
+    layout-engine: elk
+  }
+}
 grid-columns: 1
 grid-gap: 0
 
@@ -7,14 +13,16 @@ Transitions: {
     }
 }
 Transitions: |rust
-  fn transition(state: ChargerState, event: InputEvent): ChargerState, OutputEvent {
+  fn transition(state: ChargerState, event: InputEvent): (ChargerState, [OutputEvent]) {
     match (state, event) {
-      (Available, InsertCable) => (Occupied, None),
-      (Occupied, SwipeCard) => (Authorizing, None),
-      (Authorizing, Accepted) => (Charging, ApplyPower),
-      (Authorizing, Rejected) => (Occupied, None),
-      // Other transitions
-      (_, _) => (Faulted, None), // Fault when no valid transition
+      (Available, InsertCable) => (Occupied, []),
+      (Occupied, SwipeCard)    => (Authorizing, []),
+      (Authorizing, Accepted)  => (Charging, [Lock, ApplyPower]),
+      (Authorizing, Rejected)  => (Occupied, []),
+      (Charging, SwipeCard)    => (Occupied, [Unlock, RemovePower]),
+      (Occupied, RemoveCable)  => (Available, []),
+      (Faulted, Reset)         => (Available, []),
+      _                        => (Faulted, [Unlock, RemovePower]), // Faults when no valid transition
     }
   }
 |
@@ -24,7 +32,7 @@ StateMachine: {
   direction: "right"
   Available: {
     style: {fill: lightgreen}
-      icon: "./unlock_wide.png"
+      icon: "./unlock_nocable.png"
   }
   Occupied: {
     style: {fill: lightyellow}
