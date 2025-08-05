@@ -39,6 +39,7 @@ classes: {
   }
   charger: {
     label: ""
+    shape: image
     icon: "./charging-station.png"
     style: {
       fill: "#6699cc"
@@ -65,6 +66,11 @@ classes: {
       stroke: "#6699cc"
     }    
   }
+  code: {
+    style: {
+      fill: lightgreen
+    }
+  }
 }
 
 Main.class: app
@@ -87,13 +93,28 @@ Main: Application Clients, Tasks and Channels {
       off.class: state-box
       off: {style: {fill: lightgrey}}
     }
-    charger.class: charger
+    charger.class: charger 
   }
   State Machine Handler.class: task
-  State Machine Handler.box: |md
-    - Handles the charger state machine
-    - Transitions between states based on input events
-  |
+  State Machine Handler{
+    grid-columns: 1
+    grid-gap: 0
+    box: |md
+      - handles state transitions based on input events
+      - uses a finite state machine to manage charger states
+      - communicates state changes via State Out Channel
+      |
+    code.class: code
+    code: |rust
+      fn transition(state: ChargerState, event: InputEvent) -> ChargerState {
+        match (state, event) {
+          (ChargerState::Available, InputEvent::InsertCable) => ChargerState::Occupied,
+          (ChargerState::Occupied, InputEvent::RemoveCable) => ChargerState::Available,
+          // other transitions
+          _ => ChargerState::Faulted,
+        }
+      }| 
+  }
   Network.class: network
   Network: {
     grid-columns: 1
@@ -116,6 +137,17 @@ Main: Application Clients, Tasks and Channels {
   NTP Sync.box: |md
     periodically syncs time with NTP Server
   |
+  ESP32-C6: {
+    shape: image
+    label: "XIAO ESP32-C6"
+    icon: "./esp32-c6.png"
+    style: {
+      fill: "#6699cc"
+      stroke: "#6699cc"
+    }
+    height: 200
+
+  }
   State Out Channel.class: channel
   State Out Channel.box: |md
     Threadsafe channel for propagating state changes
@@ -147,27 +179,28 @@ Main: Application Clients, Tasks and Channels {
     Led Handler.class: task
     Led Handler.box: |md
       - controls multicolor led
-      - GPIO
+      - GPIO15 (going to RGB LED)
     |
     Relais Handler.class: task
     Relais Handler.box: |md
       - controls the relais
-      - GPIO
+      - GPIO2
     |
     Swipe Handler.class: task
     Swipe Handler.box: |md
       - Monitors rfid card swipes
-      - SPI
+      - GPIO1 (going to be SPI GPIO17-20) 
     |
     Cable Detection Handler.class: task
     Cable Detection Handler.box: |md
       - Monitors cable connection status
-      - GPIO
+      - GPIO0
     |
     Display Handler.class: task
     Display Handler.box: |md
       - Display Charger State and Network info
       - runs in main loop
+      - I2C (GPIO22-23)
     |
     Led {
       label: ""
