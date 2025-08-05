@@ -6,7 +6,7 @@ use log::info;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChargerState {
     Off,
-    Error,
+    Faulted,
     Available,
     Occupied,
     Charging,
@@ -36,13 +36,13 @@ impl ChargerState {
     }
 
     pub fn has_error(&self) -> bool {
-        matches!(self, Self::Error)
+        matches!(self, Self::Faulted)
     }
 
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Off => "Off",
-            Self::Error => "Error",
+            Self::Faulted => "Error",
             Self::Available => "Available",
             Self::Occupied => "Occupied",
             Self::Charging => "Charging",
@@ -96,8 +96,10 @@ impl Charger {
                 Some(ChargerState::Available)
             }
             (ChargerState::Available, ChargerInput::CableConnected) => Some(ChargerState::Occupied),
-            (ChargerState::Charging, ChargerInput::CableDisconnected) => Some(ChargerState::Error),
-            (ChargerState::Error, _) => {
+            (ChargerState::Charging, ChargerInput::CableDisconnected) => {
+                Some(ChargerState::Faulted)
+            }
+            (ChargerState::Faulted, _) => {
                 info!("Recovering from error state, resetting in 5 seconds...");
                 Timer::after(Duration::from_secs(5)).await;
                 Some(ChargerState::Available)

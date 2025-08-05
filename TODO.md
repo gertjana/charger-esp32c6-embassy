@@ -7,7 +7,6 @@
 * Setup workflow swipe-> AuthorizeReq -> AuthorizeResp -> charging -> StartTransaction
 * TLS Connection for MQTT
 
-
 ## Bugs
 
 * ~~MQTT Topic should be specific for the charger (Id instead of name)~~

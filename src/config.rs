@@ -15,6 +15,7 @@ pub struct Config {
     pub mqtt_client_id: &'static str,
     pub ntp_server: &'static str,
     pub timezone_offset_hours: i8, // Timezone offset from UTC in hours (e.g., +1 for CET, -5 for EST)
+    pub ocpp_heartbeat_interval: u16, // Heartbeat interval in seconds
 }
 
 /// Simple TOML value extraction functions
@@ -80,6 +81,8 @@ impl Config {
             extract_toml_integer(CONFIG_TOML, "display", "timezone_offset_hours")
                 .map(|offset| offset as i8)
                 .unwrap_or(0);
+        let toml_heartbeat_interval =
+            extract_toml_integer(CONFIG_TOML, "ocpp", "heartbeat_interval").unwrap_or(900);
 
         Self {
             wifi_ssid: option_env!("CHARGER_WIFI_SSID").unwrap_or(toml_wifi_ssid),
@@ -97,6 +100,9 @@ impl Config {
             timezone_offset_hours: option_env!("CHARGER_TIMEZONE_OFFSET_HOURS")
                 .and_then(|offset| offset.parse().ok())
                 .unwrap_or(toml_timezone_offset),
+            ocpp_heartbeat_interval: option_env!("CHARGER_OCPP_HEARTBEAT_INTERVAL")
+                .and_then(|interval| interval.parse().ok())
+                .unwrap_or(toml_heartbeat_interval),
         }
     }
 
@@ -117,6 +123,9 @@ impl Config {
             timezone_offset_hours: option_env!("CHARGER_TIMEZONE_OFFSET_HOURS")
                 .and_then(|offset| offset.parse().ok())
                 .unwrap_or(0),
+            ocpp_heartbeat_interval: option_env!("CHARGER_OCPP_HEARTBEAT_INTERVAL")
+                .and_then(|interval| interval.parse().ok())
+                .unwrap_or(900),
         }
     }
 

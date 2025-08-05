@@ -1,0 +1,53 @@
+grid-columns: 1
+grid-gap: 0
+
+Transitions: {
+    style: {
+        stroke-width: 0
+    }
+}
+Transitions: |rust
+  fn transition(state: ChargerState, event: InputEvent): ChargerState, OutputEvent {
+    match (state, event) {
+      (Available, InsertCable) => (Occupied, None),
+      (Occupied, SwipeCard) => (Authorizing, None),
+      (Authorizing, Accepted) => (Charging, ApplyPower),
+      (Authorizing, Rejected) => (Occupied, None),
+      // Other transitions
+      (_, _) => (Faulted, None), // Fault when no valid transition
+    }
+  }
+|
+
+StateMachine: {
+  label: "Charger State Machine"
+  direction: "right"
+  Available: {
+    style: {fill: lightgreen}
+      icon: "./unlock_wide.png"
+  }
+  Occupied: {
+    style: {fill: lightyellow}
+      icon: "./inserted_unlocked.png"
+  }
+  Charging: {
+    style: {fill: lightblue}
+    icon: "./lock+charging.png"
+  }
+  Faulted: {     
+    style: {fill: pink}
+      icon: "./unlock_wide.png"
+  }
+  Authorizing: {
+    style: {fill: orange}  
+    icon: "./inserted_unlocked.png"
+  }
+  Available -> Occupied: Insert Cable
+  Occupied -> Authorizing: Swipe Card
+  Authorizing -> Charging: Accepted
+  Authorizing -> Occupied: Rejected
+  Charging -> Occupied: Swipe Card
+  All States -> Faulted: No Valid Transition
+  Faulted -> Available: Reset
+}
+

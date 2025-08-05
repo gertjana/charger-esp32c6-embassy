@@ -82,8 +82,8 @@ Main: Application Clients, Tasks and Channels {
       authorizing: {width: 120; style: {fill: orange}}
       charging.class: state-box
       charging: {style: {fill: lightblue}}
-      error.class: state-box
-      error: {style: {fill: pink}}
+      faulted.class: state-box
+      faulted: {style: {fill: pink}}
       off.class: state-box
       off: {style: {fill: lightgrey}}
     }
@@ -91,8 +91,8 @@ Main: Application Clients, Tasks and Channels {
   }
   State Machine Handler.class: task
   State Machine Handler.box: |md
-    - transitions Charger state from incoming events and current state. 
-    - propagates resulting state 
+    - Handles the charger state machine
+    - Transitions between states based on input events
   |
   Network.class: network
   Network: {

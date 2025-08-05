@@ -11,11 +11,8 @@ const NTP_EPOCH_OFFSET: u32 = 2_208_988_800;
 const NTP_PACKET_SIZE: usize = 48;
 const NTP_PORT: u16 = 123;
 
-// Store the NTP timestamp when we last synced
 static NTP_BASE_TIME: AtomicU32 = AtomicU32::new(0);
-// Store the system timer value when we last synced (milliseconds since boot)
 static SYSTEM_TIMER_BASE: AtomicU32 = AtomicU32::new(0);
-// Track if time has been synchronized
 static TIME_SYNCED: AtomicU32 = AtomicU32::new(0);
 
 #[repr(C, packed)]

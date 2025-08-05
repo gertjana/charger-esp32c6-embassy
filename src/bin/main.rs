@@ -8,11 +8,10 @@ use embassy_executor::Spawner;
 use embassy_net::tcp::TcpSocket;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
 use embassy_time::{Duration, Instant, Timer};
-use esp32c6_embassy_charged::messages;
 use esp32c6_embassy_charged::{
     charger::{Charger, ChargerInput, ChargerState},
     config::Config,
-    mk_static,
+    messages, mk_static,
     network::{self, NetworkStack},
     ntp,
 };
@@ -250,8 +249,6 @@ async fn main(spawner: Spawner) {
 }
 
 /// Task to handle MQTT client operations
-/// This task will continuously check for incoming messages and send outgoing messages
-/// from the respective channels.
 #[embassy_executor::task]
 async fn mqtt_client_task(
     network: &'static NetworkStack,
@@ -400,6 +397,7 @@ async fn heartbeat_task() {
     info!("Task started: Network Heartbeat");
     Timer::after(Duration::from_secs(5)).await;
 
+    let ocpp_heartbeat_interval = Config::from_config().ocpp_heartbeat_interval;
     loop {
         let heartbeat_req = &messages::heartbeat(&next_ocpp_message_id());
         let message = parse::serialize_message(heartbeat_req).unwrap();
@@ -410,12 +408,12 @@ async fn heartbeat_task() {
         } else {
             warn!("Heartbeat message too large for queue");
         }
-        Timer::after(Duration::from_secs(30)).await;
+        Timer::after(Duration::from_secs(ocpp_heartbeat_interval.into())).await;
     }
 }
 
 /// Task to send boot notification to the MQTT broker
-/// Note that this task will run only once at startup
+/// Note that this task will run only once
 #[embassy_executor::task]
 async fn boot_notification_task() {
     info!("Task started: Boot Notification");
