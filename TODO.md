@@ -14,4 +14,5 @@
 ## Bugs
 
 * ~~MQTT Topic should be specific for the charger (Id instead of name)~~
+* After running for a while (hours), the time shown on the display stops
 

@@ -79,35 +79,30 @@ The charger automatically generates MQTT topics based on the serial number:
 
 | Function | GPIO Pin | Description |
 |----------|----------|-------------|
-| Onboard LED | GPIO15 | Charging status indicator |
-| Cable Switch | GPIO0 | Cable connection detector |
-| Swipe Switch | GPIO1 | Card/authorization detector |
-| Charger Relay | GPIO2 | Main charging relay control |
+| Onboard LED | GPIO15 | Charging status indicator (on when charging) |
+| Cable Switch | GPIO0 | Cable connection detector (pulls low when inserted) |
+| Swipe Switch | GPIO1 | Card/authorization detector (pulls low when swiped) |
+| Charger Relay | GPIO2 | Main charging relay control (high to enable charging) |
+| Display SDA | GPIO22 | I2C data line for SSD1306 OLED display |
+| Display SCL | GPIO23 | I2C clock line for SSD1306 OLED display |
 
 ## OCPP Protocol Support
 
 The charger implements OCPP 1.6 protocol with bidirectional MQTT communication:
 
 ### Outgoing Messages (Published to `/charger/{serial}`)
-- **Heartbeat**: Periodic status updates every 30 seconds
-- **BootNotification**: Sent once at startup with charger details
-- **StatusNotification**: Charger state changes (Available, Preparing, Charging, etc.) (not yet)
-- **StartTransaction**: Charging session initiation (not yet)
-- **StopTransaction**: Charging session completion (not yet)
+- **Authorize**: Sent when a user swipes their card for authorization
+- **BootNotification**: Sent once at startup with charger model, vendor and serial details
+- **Heartbeat**: Periodic status updates with configurable interval
+- **StartTransaction**: Charging session initiation with ID tag and timestamp
+- **StopTransaction**: Charging session completion with transaction ID and timestamp
 
 ### Incoming Messages (Subscribed to `/system/{serial}`)
-- **RemoteStartTransaction**: Cloud-initiated charging commands  (not yet)
-- **RemoteStopTransaction**: Cloud-initiated stop commands (not yet)
-- **Authorize**: Payment/authorization responses  (not yet)
-- **OCPP Responses**: All CallResult and CallError responses to request messages implemented 
-
-## Configuration Priority
-
-Settings are applied in the following order (highest to lowest priority):
-
-1. **Environment Variables** (highest priority)
-2. **app_config.toml file**
-3. **Built-in defaults** (fallback)
+- **Authorize Response**: Server response to authorize requests (Accepted/Rejected)
+- **BootNotification Response**: Server acknowledgment of charger registration
+- **Heartbeat Response**: Server acknowledgment of heartbeat messages
+- **StartTransaction Response**: Server confirmation with transaction ID
+- **StopTransaction Response**: Server acknowledgment of transaction completion
 
 ## Development
 
@@ -125,7 +120,7 @@ The system is built around Embassy async tasks:
 - **NTP Client**: Queries NTP Server every 4 hours and syncing with local timer in the ESP32-C6
 - **OCPP 1.6**: minimum support for OCPP 1.6 to support basic Charging behaviour
 - **Hardware Tasks**: GPIO monitoring for cable detection, card swipes. Led and Relay control and update a small display
-- **Periodic Tasks**: Heartbeat transmission and boot notifications
+- **Periodic Tasks**: for instance Heartbeat transmission and boot notifications (once)
 
 #### Application Diagram
 
