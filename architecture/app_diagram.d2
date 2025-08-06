@@ -16,7 +16,6 @@ classes: {
       fill: pink
     }
     shape: queue
-    width: 200
   }
   client: {style: {fill: yellow}}
   ocpp: {
@@ -76,8 +75,8 @@ classes: {
 Main.class: app
 Main: Application Clients, Tasks and Channels {
   grid-columns: 3
-  Charger State Machine.class: fsm
-  Charger State Machine: {
+  Charger.class: fsm
+  Charger: {
     States.class: states
     States {
       grid-rows: 2
@@ -123,7 +122,7 @@ Main: Application Clients, Tasks and Channels {
   NTP Sync.box: |md
     periodically syncs time with NTP Server
   |
-  ESP32-C6: {
+    ESP32-C6: {
     shape: image
     label: "XIAO ESP32-C6"
     icon: "./esp32-c6.png"
@@ -131,12 +130,11 @@ Main: Application Clients, Tasks and Channels {
       fill: "#6699cc"
       stroke: "#6699cc"
     }
-    height: 200
-
   }
-  State Out Channel.class: channel
-  State Out Channel.box: |md
-    Threadsafe channel for propagating state changes
+  State PubSub Channel.class: channel
+  State PubSub Channel.box: |md
+     - Threadsafe pubsub channel for propagating state changes
+     - other tasks can subscribe to state changes
   |
   State In Channel.class: channel
   State In Channel.box: |md
@@ -161,7 +159,12 @@ Main: Application Clients, Tasks and Channels {
   |
   Hardware: {
     grid-columns: 2
-    grid-rows: 5
+    grid-rows: 6
+    Lock Handler.class: task
+    Lock Handler.box: |md
+      - controls the lock mechanism
+      - GPIO21 (going to a solenoid lock)
+    |
     Led Handler.class: task
     Led Handler.box: |md
       - controls multicolor led
@@ -188,27 +191,41 @@ Main: Application Clients, Tasks and Channels {
       - runs in main loop
       - I2C (GPIO22-23)
     |
+    Lock {
+      label: ""
+      icon: "./padlock.png"
+      shape: image
+    }
     Led {
       label: ""
       icon: "./led.png"
+      shape: image
     }
     Relais {
       label: ""
       icon: "./circuit.png"
+      shape: image
     }
     RFID {
       label: ""
       icon: "./money.png"
+      shape: image
     }
     Cable {
       label: ""
       icon: "./vehicle.png"
+      shape: image
     }
     Display {
       label: ""
       icon: "./display-frame.png"
+      shape: image
     }
   }
+  Authorization Handler.class: ocpp
+  Authorization Handler.box: |md
+    - sends Authorize Request to OCPP Server
+  |
   Statusnotification Handler.class: ocpp
   Statusnotification Handler.box: |md
     Sends status notification on charger state changes
@@ -221,9 +238,10 @@ Main: Application Clients, Tasks and Channels {
   HeartBeat Handler.box: |md
     Periodically sends Heartbeat Request
   |
-  State Out Channel -> Hardware.Led Handler -> Hardware.LED
-  State Out Channel -> Hardware.Relais Handler -> Hardware.Relais
-  State In Channel -> State Machine Handler -> State Out Channel 
+  State PubSub Channel -> Hardware.Lock Handler -> Hardware.Lock
+  State PubSub Channel -> Hardware.Led Handler -> Hardware.LED
+  State PubSub Channel -> Hardware.Relais Handler -> Hardware.Relais
+  State In Channel -> State Machine Handler -> State PubSub Channel 
   Hardware.RFID -> Hardware.Swipe Handler -> State In Channel
   Hardware.Cable -> Hardware.Cable Detection Handler -> State In Channel
   Hardware.Display Handler -> Hardware.Display
@@ -232,8 +250,9 @@ Main: Application Clients, Tasks and Channels {
   OCPP Send Channel -> MQTT Client -> OCPP Receive Channel
   HeartBeat Handler -> OCPP Send Channel
   Bootnotification Handler -> OCPP Send Channel
-  State Machine Handler <-> Charger State Machine
-  State Out Channel -> Statusnotification Handler -> OCPP Send Channel
+  State Machine Handler <-> Charger
+  State PubSub Channel -> Statusnotification Handler -> OCPP Send Channel
+  State PubSub Channel -> Authorization Handler -> OCPP Send Channel
   NTP Client <-> Network
   MQTT Client <-> Network
 }
