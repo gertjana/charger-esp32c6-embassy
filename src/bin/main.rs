@@ -2,18 +2,15 @@
 #![no_main]
 
 extern crate alloc;
-use core::fmt::Write;
-use core::sync::atomic::{AtomicU32, Ordering};
 use embassy_executor::Spawner;
 use embassy_net::tcp::TcpSocket;
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
 use embassy_time::{Duration, Instant, Timer};
 use esp32c6_embassy_charged::{
-    charger::{Charger, ChargerInput, ChargerState},
+    charger::{self, Charger, ChargerState, InputEvent},
     config::Config,
-    messages, mk_static,
+    mk_static, mqtt,
     network::{self, NetworkStack},
-    ntp,
+    ntp, ocpp,
 };
 use esp_hal::{
     clock::CpuClock,
@@ -23,25 +20,8 @@ use esp_hal::{
 };
 
 use log::{info, warn};
-use ocpp_rs::v16::parse::{self};
 use rust_mqtt::client::client::MqttClient;
 use rust_mqtt::utils::rng_generator::CountingRng;
-
-/// Thread-safe static counter for OCPP message IDs
-static OCPP_MESSAGE_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
-
-fn next_ocpp_message_id() -> heapless::String<32> {
-    let next = OCPP_MESSAGE_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let mut data = heapless::String::new();
-    let _ = write!(data, "{next}");
-    data
-}
-
-/// Message queues for MQTT messages
-static MQTT_SEND_CHANNEL: Channel<CriticalSectionRawMutex, heapless::Vec<u8, 2048>, 5> =
-    Channel::new();
-static MQTT_RECEIVE_CHANNEL: Channel<CriticalSectionRawMutex, heapless::Vec<u8, 2048>, 5> =
-    Channel::new();
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -121,6 +101,10 @@ async fn main(spawner: Spawner) {
     let charger = mk_static!(Charger, Charger::new());
     charger.set_state(ChargerState::Available).await;
 
+    // Publish initial state to PubSub
+    let initial_publisher = charger::STATE_PUBSUB.publisher().unwrap();
+    initial_publisher.publish_immediate(ChargerState::Available);
+
     // Load configuration from TOML file with environment variable overrides
     let config = Config::from_config();
     info!("Charger configuration loaded: {}", config.charger_name);
@@ -139,16 +123,16 @@ async fn main(spawner: Spawner) {
 
     // Start hardware-related tasks (can run independently of network)
     spawner
-        .spawn(charger_led_task(charger, onboard_led_pin))
+        .spawn(charger_led_task(onboard_led_pin, charger))
         .ok();
+    spawner.spawn(charger_cable_task(cable_switch)).ok();
+    spawner.spawn(charger_swipe_task(swipe_switch)).ok();
     spawner
-        .spawn(charger_cable_task(charger, cable_switch))
+        .spawn(charger_relay_task(charger_relay, charger))
         .ok();
+
     spawner
-        .spawn(charger_swipe_task(charger, swipe_switch))
-        .ok();
-    spawner
-        .spawn(charger_relay_task(charger, charger_relay))
+        .spawn(charger::statemachine_handler_task(charger))
         .ok();
 
     // Perform initial NTP time synchronization
@@ -199,10 +183,10 @@ async fn main(spawner: Spawner) {
                 MqttClient<'static, TcpSocket<'static>, 5, CountingRng>,
                 client
             );
-            spawner.spawn(mqtt_client_task(network, client)).ok();
+            spawner.spawn(mqtt::mqtt_client_task(network, client)).ok();
 
             // Only start NTP sync task after MQTT client is successfully created
-            spawner.spawn(ntp_sync_task(network)).ok();
+            spawner.spawn(ntp::ntp_sync_task(network)).ok();
         }
         Err(e) => {
             warn!("Failed to create MQTT client: {e:?}");
@@ -211,16 +195,18 @@ async fn main(spawner: Spawner) {
     }
 
     // Start OCPP-related tasks
-    spawner.spawn(ocpp_response_handler_task()).ok();
-    spawner.spawn(heartbeat_task()).ok();
-    spawner.spawn(boot_notification_task()).ok();
+    spawner.spawn(ocpp::response_handler_task()).ok();
+
+    spawner.spawn(ocpp::heartbeat_task()).ok();
+
+    spawner.spawn(ocpp::boot_notification_task()).ok();
+
+    spawner.spawn(ocpp::status_notification_task(charger)).ok();
+
+    spawner.spawn(ocpp::authorize_task()).ok();
 
     let mut old_state = charger.get_state().await;
     let mut last_display_update = Instant::now();
-
-    if display_manager.is_some() {
-        Timer::after(Duration::from_secs(3)).await;
-    }
 
     info!("Starting main loop...");
     loop {
@@ -248,107 +234,48 @@ async fn main(spawner: Spawner) {
     }
 }
 
-/// Task to handle MQTT client operations
-#[embassy_executor::task]
-async fn mqtt_client_task(
-    network: &'static NetworkStack,
-    client: &'static mut MqttClient<'static, TcpSocket<'static>, 5, CountingRng>,
-) {
-    info!("Task started: MQTT Client (Send/Receive)");
-
-    loop {
-        match network.receive_message_with_client(client).await {
-            Ok(Some(message)) => {
-                MQTT_RECEIVE_CHANNEL.send(message).await;
-            }
-            Ok(None) => {
-                // No message received, continue to check for outgoing messages
-            }
-            Err(e) => {
-                warn!("Failed to receive MQTT message: {e:?}");
-            }
-        }
-
-        if let Ok(message) = MQTT_SEND_CHANNEL.try_receive() {
-            match network.send_message_with_client(client, &message).await {
-                Ok(()) => {
-                    // Message sent successfully
-                }
-                Err(e) => {
-                    warn!("MQTT client task: Failed to send message: {e:?}");
-                    // Put the message back in the queue to retry later
-                    if MQTT_SEND_CHANNEL.try_send(message).is_err() {
-                        warn!("MQTT: Failed to requeue message for retry, queue full");
-                    }
-                }
-            }
-        }
-
-        Timer::after(Duration::from_millis(50)).await;
-    }
-}
-
-/// Task to handle incoming OCPP responses from MQTT
-#[embassy_executor::task]
-async fn ocpp_response_handler_task() {
-    info!("Task started: OCPP Response Handler");
-
-    loop {
-        let message = MQTT_RECEIVE_CHANNEL.receive().await;
-
-        match core::str::from_utf8(&message) {
-            Ok(message_str) => {
-                //TODO Parse the message as an CallResult or CallError
-                if message_str.contains("Heartbeat") {
-                    info!("OCPP: Received Heartbeat response");
-                } else if message_str.contains("BootNotification") {
-                    info!("OCPP: Received BootNotification response");
-                } else if message_str.contains("Authorize") {
-                    info!("OCPP: Received Authorize message");
-                } else if message_str.contains("StartTransaction") {
-                    info!("OCPP: Received StartTransaction message");
-                } else if message_str.contains("StopTransaction") {
-                    info!("OCPP: Received StopTransaction message");
-                } else if message_str.contains("RemoteStartTransaction") {
-                    info!("OCPP: Received RemoteStartTransaction command");
-                } else if message_str.contains("RemoteStopTransaction") {
-                    info!("OCPP: Received RemoteStopTransaction command");
-                } else if message_str.contains("StatusNotification") {
-                    info!("OCPP: Received StatusNotification message");
-                } else if message_str.contains("MeterValues") {
-                    info!("OCPP: Received MeterValues message");
-                } else if message_str.starts_with('[') && message_str.contains(',') {
-                    // Looks like an OCPP message but unknown type
-                    info!("OCPP: Received unknown message type: {message_str}");
-                } else {
-                    // Non-OCPP message
-                    info!("MQTT: Non-OCPP message received: {message_str}");
-                }
-            }
-            Err(_) => {
-                warn!("MQTT: Received non-UTF8 message, length: {}", message.len());
-            }
-        }
-    }
-}
-
 /// Task to control the charger LED based on the charging state
 #[embassy_executor::task]
-async fn charger_led_task(charger: &'static Charger, mut led_pin: Output<'static>) {
-    info!("Task started: Charger Led Charging Indicator");
+async fn charger_led_task(mut led_pin: Output<'static>, charger: &'static Charger) {
+    info!("Task started: Charger Led Charging Indicator (PubSub Mode)");
+
+    let mut subscriber = charger::STATE_PUBSUB.subscriber().unwrap();
+
+    // Set initial LED state based on current charger state
+    let initial_state = charger.get_state().await;
+    if initial_state == ChargerState::Charging {
+        info!("LED: Setting LED high for initial charging state");
+        led_pin.set_high();
+    } else {
+        info!(
+            "LED: Setting LED low for initial state: {}",
+            initial_state.as_str()
+        );
+        led_pin.set_low();
+    }
+
     loop {
-        if (charger.get_state().await).is_charging() {
-            led_pin.set_low();
-        } else {
-            led_pin.set_high();
+        // Wait for state changes via PubSub
+        if let embassy_sync::pubsub::WaitResult::Message(current_state) =
+            subscriber.next_message().await
+        {
+            match current_state {
+                ChargerState::Charging => {
+                    info!("LED: Setting LED high for charging state");
+                    led_pin.set_high();
+                }
+                _ => {
+                    info!("LED: Setting LED low for state: {}", current_state.as_str());
+                    led_pin.set_low();
+                }
+            }
         }
-        Timer::after(Duration::from_secs(1)).await;
     }
 }
 
 /// Task to detect charger cable connection and disconnection
 #[embassy_executor::task]
-async fn charger_cable_task(charger: &'static Charger, mut button: Input<'static>) {
+async fn charger_cable_task(mut button: Input<'static>) {
     info!("Task started: Charger cable Detector");
 
     loop {
@@ -356,121 +283,67 @@ async fn charger_cable_task(charger: &'static Charger, mut button: Input<'static
 
         Timer::after(Duration::from_millis(100)).await;
 
-        if button.is_low() {
-            charger.transition(ChargerInput::CableConnected).await;
+        let cable_event = if button.is_low() {
+            InputEvent::InsertCable
         } else {
-            charger.transition(ChargerInput::CableDisconnected).await;
-        }
+            InputEvent::RemoveCable
+        };
+        info!("Cable: Detected event: {cable_event:?}, sending to state machine");
+        charger::STATE_IN_CHANNEL.send(cable_event).await;
     }
 }
 
-/// Task to detect charger swipe events
+/// Task to detect charger RFID Swipe for authentication
 #[embassy_executor::task]
-async fn charger_swipe_task(charger: &'static Charger, mut swipe_switch: Input<'static>) {
-    info!("Task started: Charger swipe detector");
+async fn charger_swipe_task(mut button: Input<'static>) {
+    info!("Task started: Charger Swipe Detector");
 
     loop {
-        swipe_switch.wait_for_falling_edge().await;
+        button.wait_for_any_edge().await;
+
         Timer::after(Duration::from_millis(100)).await;
 
-        charger.transition(ChargerInput::SwipeDetected).await;
-    }
-}
-
-/// Task to control the charger relay based on the charging state
-#[embassy_executor::task]
-async fn charger_relay_task(charger: &'static Charger, mut relay: Output<'static>) {
-    info!("Task started: Charger relay control");
-
-    loop {
-        match charger.get_state().await {
-            ChargerState::Charging => relay.set_high(),
-            _ => relay.set_low(),
+        if button.is_low() {
+            info!("Swipe: Card swiped, sending event to state machine");
+            charger::STATE_IN_CHANNEL
+                .send(InputEvent::SwipeDetected)
+                .await;
         }
-        Timer::after(Duration::from_secs(1)).await;
     }
 }
 
-/// Task to send periodic heartbeat messages to the MQTT broker
+/// Task to control the charger relay based on the charging state  
 #[embassy_executor::task]
-async fn heartbeat_task() {
-    info!("Task started: Network Heartbeat");
-    Timer::after(Duration::from_secs(5)).await;
+async fn charger_relay_task(mut relay: Output<'static>, charger: &'static Charger) {
+    info!("Task started: Charger relay control (PubSub Mode)");
 
-    let ocpp_heartbeat_interval = Config::from_config().ocpp_heartbeat_interval;
-    loop {
-        let heartbeat_req = &messages::heartbeat(&next_ocpp_message_id());
-        let message = parse::serialize_message(heartbeat_req).unwrap();
+    let mut subscriber = charger::STATE_PUBSUB.subscriber().unwrap();
 
-        let mut msg_vec = heapless::Vec::new();
-        if msg_vec.extend_from_slice(message.as_bytes()).is_ok() {
-            MQTT_SEND_CHANNEL.send(msg_vec).await;
-        } else {
-            warn!("Heartbeat message too large for queue");
+    // Set initial relay state based on current charger state
+    let initial_state = charger.get_state().await;
+    match initial_state {
+        ChargerState::Charging => {
+            relay.set_high();
         }
-        Timer::after(Duration::from_secs(ocpp_heartbeat_interval.into())).await;
+        _ => {
+            relay.set_low();
+        }
     }
-}
-
-/// Task to send boot notification to the MQTT broker
-/// Note that this task will run only once
-#[embassy_executor::task]
-async fn boot_notification_task() {
-    info!("Task started: Boot Notification");
-
-    let boot_notification_req =
-        &messages::boot_notification(&next_ocpp_message_id(), &Config::from_config());
-    let message = parse::serialize_message(boot_notification_req).unwrap();
-
-    let mut msg_vec = heapless::Vec::new();
-    if msg_vec.extend_from_slice(message.as_bytes()).is_ok() {
-        MQTT_SEND_CHANNEL.send(msg_vec).await;
-    } else {
-        warn!("Boot Notification message too large for queue");
-    }
-}
-
-/// Task to synchronize time with NTP servers
-#[embassy_executor::task]
-async fn ntp_sync_task(network: &'static NetworkStack) {
-    info!("Task started: NTP Time Synchronization");
-
-    // Wait longer for MQTT to be fully established
-    Timer::after(Duration::from_secs(60)).await;
-
-    let config = Config::from_config();
 
     loop {
-        if !ntp::is_time_synced() || ntp::minutes_since_last_sync() > 240 {
-            // 4 hours instead of 1
-            info!(
-                "NTP: Attempting time synchronization with {}",
-                config.ntp_server
-            );
-            info!("NTP: Before sync - {}", ntp::get_timing_info());
-
-            match ntp::sync_time_with_ntp(network, config.ntp_server).await {
-                Ok(()) => {
-                    info!("NTP: Time synchronized successfully");
-                    info!("NTP: Current time: {}", ntp::get_iso8601_time());
-                    info!("NTP: After sync - {}", ntp::get_timing_info());
+        // Wait for state changes via PubSub
+        if let embassy_sync::pubsub::WaitResult::Message(current_state) =
+            subscriber.next_message().await
+        {
+            // Simple logic: turn on relay when charging, off otherwise
+            match current_state {
+                ChargerState::Charging => {
+                    relay.set_high();
                 }
-                Err(e) => {
-                    warn!("NTP: Time synchronization failed: {e}");
+                _ => {
+                    relay.set_low();
                 }
             }
-
-            // Sync every 4 hours or retry every 15 minutes on failure
-            let wait_time = if ntp::is_time_synced() {
-                Duration::from_secs(14400) // 4 hours
-            } else {
-                Duration::from_secs(900) // 15 minutes
-            };
-
-            Timer::after(wait_time).await;
-        } else {
-            // Check again in 30 minutes
-            Timer::after(Duration::from_secs(1800)).await;
         }
     }
 }
