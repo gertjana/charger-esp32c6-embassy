@@ -91,6 +91,7 @@
 
 
 ### Error Logging Pattern:
+  - When logging with string interpolation, put the variables inside the {} in the string instead of arguments
 
 ```rust
 match operation().await {
