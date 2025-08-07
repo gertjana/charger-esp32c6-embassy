@@ -1,3 +1,5 @@
+name: Generate/Upload D2 Diagrams
+
 on:
   push:
     branches:
