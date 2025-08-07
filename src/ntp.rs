@@ -2,9 +2,10 @@ use chrono::{Datelike, Timelike, Utc};
 use core::fmt::Write;
 use core::sync::atomic::{AtomicU32, Ordering};
 use embassy_net::udp::UdpSocket;
-use embassy_time::{Duration, Instant};
-use log::{error, info};
+use embassy_time::{Duration, Instant, Timer};
+use log::{error, info, warn};
 
+use crate::config::Config;
 use crate::network::NetworkStack;
 
 const NTP_EPOCH_OFFSET: u32 = 2_208_988_800;
@@ -106,6 +107,49 @@ impl NtpPacket {
             Some(ntp_seconds - NTP_EPOCH_OFFSET)
         } else {
             None
+        }
+    }
+}
+
+/// Task to synchronize time with NTP servers
+#[embassy_executor::task]
+pub async fn ntp_sync_task(network: &'static NetworkStack) {
+    info!("Task started: NTP Time Synchronization");
+
+    // Wait longer for MQTT to be fully established
+    Timer::after(Duration::from_secs(60)).await;
+
+    let config = Config::from_config();
+
+    loop {
+        if !is_time_synced() || minutes_since_last_sync() > config.ntp_sync_interval_minutes as u32
+        {
+            info!(
+                "NTP: Attempting time synchronization with {}",
+                config.ntp_server
+            );
+
+            match sync_time_with_ntp(network, config.ntp_server).await {
+                Ok(()) => {
+                    info!("NTP: Time synchronized successfully");
+                    info!("NTP: Current time: {}", get_iso8601_time());
+                }
+                Err(e) => {
+                    warn!("NTP: Time synchronization failed: {e}");
+                }
+            }
+
+            // Sync every 4 hours or retry every 15 minutes on failure
+            let wait_time = if is_time_synced() {
+                Duration::from_secs(14400) // 4 hours
+            } else {
+                Duration::from_secs(900) // 15 minutes
+            };
+
+            Timer::after(wait_time).await;
+        } else {
+            // Check again in 30 minutes
+            Timer::after(Duration::from_secs(1800)).await;
         }
     }
 }

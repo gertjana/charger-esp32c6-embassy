@@ -1,7 +1,38 @@
 use core::cell::RefCell;
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
+use embassy_sync::{
+    blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, mutex::Mutex,
+    pubsub::PubSubChannel,
+};
 use embassy_time::{Duration, Timer};
-use log::info;
+use log::{info, warn};
+
+pub static DEFAULT_CONNECTOR_ID: u32 = 0;
+
+/// PubSub channel for charger state changes
+pub static STATE_PUBSUB: PubSubChannel<CriticalSectionRawMutex, ChargerState, 8, 4, 4> =
+    PubSubChannel::new();
+
+/// Message queue for charger input events
+pub static STATE_IN_CHANNEL: Channel<CriticalSectionRawMutex, InputEvent, 10> = Channel::new();
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InputEvent {
+    InsertCable,
+    RemoveCable,
+    SwipeDetected,
+    Accepted,
+    Rejected,
+    None,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutputEvent {
+    Lock,
+    Unlock,
+    ApplyPower,
+    RemovePower,
+    ShowRejected,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChargerState {
@@ -10,6 +41,7 @@ pub enum ChargerState {
     Available,
     Occupied,
     Charging,
+    Authorizing,
 }
 
 impl Default for ChargerState {
@@ -46,15 +78,9 @@ impl ChargerState {
             Self::Available => "Available",
             Self::Occupied => "Occupied",
             Self::Charging => "Charging",
+            Self::Authorizing => "Authorizing",
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ChargerInput {
-    CableConnected,
-    CableDisconnected,
-    SwipeDetected,
 }
 
 pub struct Charger {
@@ -85,41 +111,83 @@ impl Charger {
         *state_guard.borrow_mut() = new_state;
     }
 
-    pub async fn transition(&self, charger_input: ChargerInput) {
-        let state_guard = self.state.lock().await;
-        let current_state = *state_guard.borrow();
+    pub async fn transition(
+        &self,
+        charger_input: InputEvent,
+    ) -> (ChargerState, heapless::Vec<OutputEvent, 2>) {
+        let current_state = self.get_state().await;
 
-        let new_state = match (current_state, charger_input) {
-            (ChargerState::Occupied, ChargerInput::SwipeDetected) => Some(ChargerState::Charging),
-            (ChargerState::Charging, ChargerInput::SwipeDetected) => Some(ChargerState::Occupied),
-            (ChargerState::Occupied, ChargerInput::CableDisconnected) => {
-                Some(ChargerState::Available)
+        info!("Transitioning from {current_state:?} with input {charger_input:?}");
+
+        let (new_state, events) = match (current_state, charger_input) {
+            (ChargerState::Available, InputEvent::InsertCable) => {
+                (ChargerState::Occupied, heapless::Vec::new())
             }
-            (ChargerState::Available, ChargerInput::CableConnected) => Some(ChargerState::Occupied),
-            (ChargerState::Charging, ChargerInput::CableDisconnected) => {
-                Some(ChargerState::Faulted)
+            (ChargerState::Occupied, InputEvent::SwipeDetected) => {
+                (ChargerState::Authorizing, heapless::Vec::new())
             }
-            (ChargerState::Faulted, _) => {
-                info!("Recovering from error state, resetting in 5 seconds...");
-                Timer::after(Duration::from_secs(5)).await;
-                Some(ChargerState::Available)
+            (ChargerState::Authorizing, InputEvent::Accepted) => (
+                ChargerState::Charging,
+                heapless::Vec::from_slice(&[OutputEvent::ApplyPower, OutputEvent::Lock]).unwrap(),
+            ),
+            (ChargerState::Authorizing, InputEvent::Rejected) => (
+                ChargerState::Occupied,
+                heapless::Vec::from_slice(&[OutputEvent::ShowRejected]).unwrap(),
+            ),
+            (ChargerState::Charging, InputEvent::SwipeDetected) => {
+                let output_events =
+                    heapless::Vec::from_slice(&[OutputEvent::RemovePower, OutputEvent::Unlock])
+                        .unwrap_or_default();
+                (ChargerState::Occupied, output_events)
             }
-            _ => None,
+            (ChargerState::Occupied, InputEvent::RemoveCable) => {
+                (ChargerState::Available, heapless::Vec::new())
+            }
+            (ChargerState::Charging, InputEvent::RemoveCable) => {
+                let output_events =
+                    heapless::Vec::from_slice(&[OutputEvent::RemovePower, OutputEvent::Unlock])
+                        .unwrap_or_default();
+                (ChargerState::Faulted, output_events)
+            }
+            (ChargerState::Faulted, _) => (ChargerState::Available, heapless::Vec::new()),
+            _ => {
+                warn!("Invalid or unknown transition from {current_state:?} with input {charger_input:?}");
+                (ChargerState::Faulted, heapless::Vec::new())
+            }
         };
+        info!("Transition result: {new_state:?}, {events:?}");
+        self.set_state(new_state).await;
+        (new_state, events)
+    }
+}
 
-        if let Some(state) = new_state {
+#[embassy_executor::task]
+pub async fn statemachine_handler_task(charger: &'static Charger) {
+    info!("Task started: Charger State Machine Handler");
+
+    let publisher = STATE_PUBSUB.publisher().unwrap();
+
+    loop {
+        // Wait for state change events
+        let event = STATE_IN_CHANNEL.receive().await;
+        info!("State Machine: Received input event: {event:?}");
+
+        let old_state = charger.get_state().await;
+        let (new_state, result) = charger.transition(event).await;
+        info!(
+            "State Machine: Transitioned to state: {}, events: {result:?}",
+            new_state.as_str()
+        );
+
+        // Publish state change if state actually changed
+        if old_state != new_state {
+            publisher.publish_immediate(new_state);
             info!(
-                "Transitioned from {} -> {}",
-                current_state.as_str(),
-                state.as_str()
-            );
-            *state_guard.borrow_mut() = state;
-        } else {
-            info!(
-                "No valid transition for input: {} with {:?}",
-                current_state.as_str(),
-                charger_input
+                "State Machine: Published state change to {}",
+                new_state.as_str()
             );
         }
+
+        Timer::after(Duration::from_millis(100)).await;
     }
 }
