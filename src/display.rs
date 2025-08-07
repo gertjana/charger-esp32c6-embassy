@@ -146,13 +146,44 @@ where
             .draw(&mut self.display)
             .map_err(|_| "Failed to draw left line")?;
 
-        // Line 2: Current state
-        let mut state_line = heapless::String::<21>::new();
-        let _ = write!(state_line, "{}", charger_state.as_str());
-
-        Text::with_baseline(&state_line, Point::new(0, 14), text_style, Baseline::Top)
+        // Line 2: Current state in a right-aligned rounded rectangle with inverted text
+        let state_text = charger_state.as_str();
+        let state_width = state_text.len() as i32 * 6; // Approximate width based on font
+        
+        // Create a rounded rectangle for the state background
+        let rounded_rect_style = PrimitiveStyleBuilder::new()
+            .fill_color(BinaryColor::On)
+            .stroke_color(BinaryColor::On)
+            .stroke_width(1)
+            .build();
+        
+        let x_position = 128 - state_width - 4; // Right-aligned with 2px padding on each side
+        
+        // Draw the rounded rectangle
+        let rounded_rect = embedded_graphics::primitives::Rectangle::new(
+            Point::new(x_position, 14), 
+            Size::new(state_width as u32 + 4, 12)
+        ).into_styled(rounded_rect_style);
+        
+        rounded_rect
             .draw(&mut self.display)
-            .map_err(|_| "Failed to draw state")?;
+            .map_err(|_| "Failed to draw state background")?;
+            
+        // Inverted text style for the state
+        let inverted_text_style = MonoTextStyleBuilder::new()
+            .font(&FONT_6X10)
+            .text_color(BinaryColor::Off) // Inverted color
+            .build();
+            
+        // Draw the state text
+        Text::with_baseline(
+            state_text, 
+            Point::new(x_position + 2, 14), // 2px padding from left edge of rectangle
+            inverted_text_style, 
+            Baseline::Top
+        )
+        .draw(&mut self.display)
+        .map_err(|_| "Failed to draw state")?;
 
         // Line 4: IP Address
         let mut ip_line = heapless::String::<21>::new();

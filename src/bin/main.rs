@@ -6,7 +6,7 @@ use embassy_executor::Spawner;
 use embassy_net::tcp::TcpSocket;
 use embassy_time::{Duration, Instant, Timer};
 use esp32c6_embassy_charged::{
-    charger::{self, Charger, ChargerState, InputEvent},
+    charger::{self, Charger, ChargerState, InputEvent, OutputEvent},
     config::Config,
     mk_static, mqtt,
     network::{self, NetworkStack},
@@ -86,6 +86,8 @@ async fn main(spawner: Spawner) {
     // GPIO Setup
     let onboard_led_pin = Output::new(peripherals.GPIO15, Level::Low, Default::default());
 
+    let cable_lock_pin = Output::new(peripherals.GPIO21, Level::Low, Default::default());
+
     let cable_switch = Input::new(
         peripherals.GPIO0,
         InputConfig::default().with_pull(Pull::Up),
@@ -103,7 +105,7 @@ async fn main(spawner: Spawner) {
 
     // Publish initial state to PubSub
     let initial_publisher = charger::STATE_PUBSUB.publisher().unwrap();
-    initial_publisher.publish_immediate(ChargerState::Available);
+    initial_publisher.publish_immediate((ChargerState::Available, heapless::Vec::new()));
 
     // Load configuration from TOML file with environment variable overrides
     let config = Config::from_config();
@@ -125,10 +127,17 @@ async fn main(spawner: Spawner) {
     spawner
         .spawn(charger_led_task(onboard_led_pin, charger))
         .ok();
-    spawner.spawn(charger_cable_task(cable_switch)).ok();
-    spawner.spawn(charger_swipe_task(swipe_switch)).ok();
+
     spawner
-        .spawn(charger_relay_task(charger_relay, charger))
+        .spawn(cable_lock_task(cable_lock_pin))
+        .ok();
+
+    spawner.spawn(charger_cable_task(cable_switch)).ok();
+    
+    spawner.spawn(charger_swipe_task(swipe_switch)).ok();
+    
+    spawner
+        .spawn(charger_relay_task(charger_relay))
         .ok();
 
     spawner
@@ -256,40 +265,84 @@ async fn charger_led_task(mut led_pin: Output<'static>, charger: &'static Charge
 
     loop {
         // Wait for state changes via PubSub
-        if let embassy_sync::pubsub::WaitResult::Message(current_state) =
+        if let embassy_sync::pubsub::WaitResult::Message((current_state, _)) =
             subscriber.next_message().await
         {
             match current_state {
                 ChargerState::Charging => {
                     info!("LED: Setting LED high for charging state");
-                    led_pin.set_high();
+                    led_pin.set_low();
                 }
                 _ => {
                     info!("LED: Setting LED low for state: {}", current_state.as_str());
-                    led_pin.set_low();
+                    led_pin.set_high();
                 }
             }
         }
     }
 }
 
+
+
+
 /// Task to detect charger cable connection and disconnection
 #[embassy_executor::task]
 async fn charger_cable_task(mut button: Input<'static>) {
     info!("Task started: Charger cable Detector");
-
+    
+    // Track the stable state of the button
+    let mut last_stable_state = button.is_low();
+    let debounce_time = Duration::from_millis(50);
+    let stable_readings_required = 5;
+    
     loop {
+        // Wait for any edge detection
         button.wait_for_any_edge().await;
-
-        Timer::after(Duration::from_millis(100)).await;
-
-        let cable_event = if button.is_low() {
-            InputEvent::InsertCable
-        } else {
-            InputEvent::RemoveCable
-        };
-        info!("Cable: Detected event: {cable_event:?}, sending to state machine");
-        charger::STATE_IN_CHANNEL.send(cable_event).await;
+        
+        // Initial reading after edge detection
+        let current_state = button.is_low();
+        
+        // Only proceed with debouncing if the state has potentially changed
+        if current_state != last_stable_state {
+            let mut stable_count = 0;
+            let mut consistent_state = current_state;
+            
+            // Debounce algorithm: require multiple consistent readings
+            for _ in 0..stable_readings_required {
+                Timer::after(debounce_time).await;
+                
+                // Check if the reading is stable
+                let new_reading = button.is_low();
+                if new_reading == consistent_state {
+                    stable_count += 1;
+                } else {
+                    // Reset if reading changed
+                    stable_count = 1;
+                    consistent_state = new_reading;
+                }
+            }
+            
+            // If we got stable readings and they differ from last stable state
+            if stable_count >= stable_readings_required && consistent_state != last_stable_state {
+                // Update the stable state
+                last_stable_state = consistent_state;
+                
+                // Send the appropriate event
+                let cable_event = if consistent_state {
+                    InputEvent::InsertCable
+                } else {
+                    InputEvent::RemoveCable
+                };
+                
+                info!("Cable: Detected stable event: {cable_event:?}, sending to state machine");
+                charger::STATE_IN_CHANNEL.send(cable_event).await;
+            } else {
+                info!("Cable: Ignoring unstable transition");
+            }
+        }
+        
+        // Add a small delay before starting the next edge detection cycle
+        Timer::after(Duration::from_millis(10)).await;
     }
 }
 
@@ -297,47 +350,71 @@ async fn charger_cable_task(mut button: Input<'static>) {
 #[embassy_executor::task]
 async fn charger_swipe_task(mut button: Input<'static>) {
     info!("Task started: Charger Swipe Detector");
-
+    
+    let debounce_time = Duration::from_millis(50);
+    let stable_readings_required = 5;
+    let mut last_active = false;  // Track if we've already processed a swipe
+    
     loop {
         button.wait_for_any_edge().await;
 
-        Timer::after(Duration::from_millis(100)).await;
-
+        // Only trigger on falling edges (button pressed/card swiped)
         if button.is_low() {
-            info!("Swipe: Card swiped, sending event to state machine");
-            charger::STATE_IN_CHANNEL
-                .send(InputEvent::SwipeDetected)
-                .await;
+            // Don't reprocess if we're already in an active swipe cycle
+            if !last_active {
+                // Verify the press is stable with multiple readings
+                let mut stable_count = 0;
+                
+                for _ in 0..stable_readings_required {
+                    Timer::after(debounce_time).await;
+                    
+                    if button.is_low() {
+                        stable_count += 1;
+                    } else {
+                        // Button released during verification, abort
+                        break;
+                    }
+                }
+                
+                // Only process if we had enough stable readings
+                if stable_count >= stable_readings_required {
+                    info!("Swipe: Card swipe verified, sending event to state machine");
+                    charger::STATE_IN_CHANNEL
+                        .send(InputEvent::SwipeDetected)
+                        .await;
+                    
+                    // Mark as active to prevent duplicate processing
+                    last_active = true;
+                }
+            }
+        } else {
+            // Button is high (released) - reset active state for next swipe
+            last_active = false;
         }
+        
+        // Short delay before next detection
+        Timer::after(Duration::from_millis(10)).await;
     }
 }
 
 /// Task to control the charger relay based on the charging state  
 #[embassy_executor::task]
-async fn charger_relay_task(mut relay: Output<'static>, charger: &'static Charger) {
+async fn charger_relay_task(mut relay: Output<'static>) {
     info!("Task started: Charger relay control (PubSub Mode)");
 
     let mut subscriber = charger::STATE_PUBSUB.subscriber().unwrap();
 
-    // Set initial relay state based on current charger state
-    let initial_state = charger.get_state().await;
-    match initial_state {
-        ChargerState::Charging => {
-            relay.set_high();
-        }
-        _ => {
-            relay.set_low();
-        }
-    }
+    relay.set_low();
+    info!("Relay: Initial state set to low (off)");
 
     loop {
         // Wait for state changes via PubSub
-        if let embassy_sync::pubsub::WaitResult::Message(current_state) =
+        if let embassy_sync::pubsub::WaitResult::Message((current_state, output_events)) =
             subscriber.next_message().await
         {
             // Simple logic: turn on relay when charging, off otherwise
             match current_state {
-                ChargerState::Charging => {
+                ChargerState::Charging if output_events.contains(&OutputEvent::ApplyPower) => {
                     relay.set_high();
                 }
                 _ => {
@@ -346,4 +423,32 @@ async fn charger_relay_task(mut relay: Output<'static>, charger: &'static Charge
             }
         }
     }
+}
+
+/// Task to control the cable lock based on the charging state
+#[embassy_executor::task]
+async fn cable_lock_task(mut cable_lock_pin: Output<'static>) {
+    info!("Task started: Cable Lock Control");
+    let mut subscriber = charger::STATE_PUBSUB.subscriber().unwrap();
+
+    loop {
+        if let embassy_sync::pubsub::WaitResult::Message((current_state, output_events)) =
+            subscriber.next_message().await
+        {
+            match current_state {
+                _ if output_events.contains(&OutputEvent::Lock) => {
+                    info!("Cable Lock: Locking cable for charging state");
+                    cable_lock_pin.set_high();
+                                }
+                _ if output_events.contains(&OutputEvent::Unlock) => {
+                    info!("Cable Lock: Unlocking cable for state: {}", current_state.as_str());
+                    cable_lock_pin.set_low();
+                }
+                _ => {
+                    info!("Cable Lock: No action for state: {}", current_state.as_str());
+                }
+            }
+        }
+    }
+
 }

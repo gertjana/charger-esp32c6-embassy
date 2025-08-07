@@ -123,7 +123,7 @@ pub async fn authorize_task() {
 
     loop {
         // Wait for state changes via PubSub
-        if let embassy_sync::pubsub::WaitResult::Message(current_state) =
+        if let embassy_sync::pubsub::WaitResult::Message((current_state, _)) =
             subscriber.next_message().await
         {
             if current_state == ChargerState::Authorizing {
@@ -183,7 +183,7 @@ pub async fn status_notification_task(charger: &'static Charger) {
 
     loop {
         // Wait for state changes via PubSub
-        if let embassy_sync::pubsub::WaitResult::Message(current_state) =
+        if let embassy_sync::pubsub::WaitResult::Message((current_state, _)) =
             subscriber.next_message().await
         {
             info!(

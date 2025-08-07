@@ -9,7 +9,7 @@ use log::{info, warn};
 pub static DEFAULT_CONNECTOR_ID: u32 = 0;
 
 /// PubSub channel for charger state changes
-pub static STATE_PUBSUB: PubSubChannel<CriticalSectionRawMutex, ChargerState, 8, 4, 4> =
+pub static STATE_PUBSUB: PubSubChannel<CriticalSectionRawMutex, (ChargerState, heapless::Vec<OutputEvent, 2>), 8, 5, 4> =
     PubSubChannel::new();
 
 /// Message queue for charger input events
@@ -149,7 +149,12 @@ impl Charger {
                         .unwrap_or_default();
                 (ChargerState::Faulted, output_events)
             }
-            (ChargerState::Faulted, _) => (ChargerState::Available, heapless::Vec::new()),
+            (ChargerState::Faulted, _) => {
+                warn!("Charger is in faulted state, resetting to available after 5 seconds");
+                Timer::after(Duration::from_secs(5)).await;
+                STATE_IN_CHANNEL.clear();
+                (ChargerState::Available, heapless::Vec::new())
+            }
             _ => {
                 warn!("Invalid or unknown transition from {current_state:?} with input {charger_input:?}");
                 (ChargerState::Faulted, heapless::Vec::new())
@@ -173,15 +178,15 @@ pub async fn statemachine_handler_task(charger: &'static Charger) {
         info!("State Machine: Received input event: {event:?}");
 
         let old_state = charger.get_state().await;
-        let (new_state, result) = charger.transition(event).await;
+        let (new_state, output_events) = charger.transition(event).await;
         info!(
-            "State Machine: Transitioned to state: {}, events: {result:?}",
+            "State Machine: Transitioned to state: {}, events: {output_events:?}",
             new_state.as_str()
         );
 
         // Publish state change if state actually changed
         if old_state != new_state {
-            publisher.publish_immediate(new_state);
+            publisher.publish_immediate((new_state, output_events));
             info!(
                 "State Machine: Published state change to {}",
                 new_state.as_str()
