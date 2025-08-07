@@ -32,23 +32,23 @@ StateMachine: {
   direction: "right"
   Available: {
     style: {fill: lightgreen}
-      icon: "./unlock_nocable.png"
+      icon: "./images/unlock_nocable.png"
   }
   Occupied: {
     style: {fill: lightyellow}
-      icon: "./inserted_unlocked.png"
+      icon: "./images/inserted_unlocked.png"
   }
   Charging: {
     style: {fill: lightblue}
-    icon: "./lock+charging.png"
+    icon: "./images/lock+charging.png"
   }
   Faulted: {     
     style: {fill: pink}
-      icon: "./unlock_wide.png"
+      icon: "./images/unlock_wide.png"
   }
   Authorizing: {
     style: {fill: orange}  
-    icon: "./inserted_unlocked.png"
+    icon: "./images/inserted_unlocked.png"
   }
   Available -> Occupied: Insert Cable
   Occupied -> Authorizing: Swipe Card

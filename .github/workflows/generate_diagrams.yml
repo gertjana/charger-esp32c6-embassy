@@ -1,0 +1,28 @@
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "**/README.md"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  generate_diagrams:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up D2
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y d2
+
+      - name: Generate D2 diagrams
+        run: ./scripts/generate_d2_pngs.sh
+      - name: Upload D2 Diagrams
+        uses: actions/upload-artifact@v2
+        with:
+          name: D2 Diagrams
+          path: ./architecture/*.png
