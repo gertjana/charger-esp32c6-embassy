@@ -59,7 +59,9 @@ classes: {
     height: 60
   }
   states: {
-    label: ""
+    grid-columns: 1
+    grid-gap: 5
+    height: 400
     style: {
       fill: "#6699cc"
       stroke: "#6699cc"
@@ -75,12 +77,20 @@ classes: {
 Main.class: app
 Main: Application Clients, Tasks and Channels {
   grid-columns: 3
-  Charger.class: fsm
-  Charger: {
+  Charger States.class: fsm
+  Charger States: {
+    grid-columns: 3
+    grid-rows: 1
+    InputEvents.class: states
+    InputEvents {
+      InsertCable
+      RemoveCable
+      SwipeDetected
+      Accepted
+      Rejected
+    }
     States.class: states
     States {
-      grid-rows: 2
-      grid-gap: 15
       available.class: state-bo
       available: {style: {fill: lightgreen}}
       occupied: {width: 120; style: {fill: lightyellow}}
@@ -92,7 +102,14 @@ Main: Application Clients, Tasks and Channels {
       off.class: state-box
       off: {style: {fill: lightgrey}}
     }
-    charger.class: charger 
+    OutputEvents.class: states
+    OutputEvents {
+      Lock
+      Unlock
+      ApplyPower
+      RemovePower
+      ShowRejected
+    }
   }
   State Machine Handler.class: task
   State Machine Handler.box: |md
@@ -238,6 +255,7 @@ Main: Application Clients, Tasks and Channels {
   HeartBeat Handler.box: |md
     Periodically sends Heartbeat Request
   |
+  Charger States.InputEvents -> Charger States.States -> Charger States.OutputEvents
   State PubSub Channel -> Hardware.Lock Handler -> Hardware.Lock
   State PubSub Channel -> Hardware.Led Handler -> Hardware.LED
   State PubSub Channel -> Hardware.Relais Handler -> Hardware.Relais
@@ -250,7 +268,7 @@ Main: Application Clients, Tasks and Channels {
   OCPP Send Channel -> MQTT Client -> OCPP Receive Channel
   HeartBeat Handler -> OCPP Send Channel
   Bootnotification Handler -> OCPP Send Channel
-  State Machine Handler <-> Charger
+  State Machine Handler <-> Charger States
   State PubSub Channel -> Statusnotification Handler -> OCPP Send Channel
   State PubSub Channel -> Authorization Handler -> OCPP Send Channel
   NTP Client <-> Network
