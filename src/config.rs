@@ -14,6 +14,7 @@ pub struct Config {
     pub mqtt_port: u16,
     pub mqtt_client_id: &'static str,
     pub ntp_server: &'static str,
+    pub ntp_sync_interval_minutes: u16, // NTP sync interval in minutes
     pub timezone_offset_hours: i8, // Timezone offset from UTC in hours (e.g., +1 for CET, -5 for EST)
     pub ocpp_heartbeat_interval: u16, // Heartbeat interval in seconds
 }
@@ -77,6 +78,8 @@ impl Config {
             extract_toml_string(CONFIG_TOML, "mqtt", "client_id").unwrap_or("esp32c6-charger-001");
         let toml_ntp_server =
             extract_toml_string(CONFIG_TOML, "ntp", "server").unwrap_or("pool.ntp.org");
+        let toml_ntp_sync_interval_minutes =
+            extract_toml_integer(CONFIG_TOML, "ntp", "sync_interval_minutes").unwrap_or(240);
         let toml_timezone_offset =
             extract_toml_integer(CONFIG_TOML, "display", "timezone_offset_hours")
                 .map(|offset| offset as i8)
@@ -97,6 +100,9 @@ impl Config {
                 .unwrap_or(toml_mqtt_port),
             mqtt_client_id: option_env!("CHARGER_MQTT_CLIENT_ID").unwrap_or(toml_mqtt_client_id),
             ntp_server: option_env!("CHARGER_NTP_SERVER").unwrap_or(toml_ntp_server),
+            ntp_sync_interval_minutes: option_env!("CHARGER_NTP_SYNC_INTERVAL_MINUTES")
+                .and_then(|interval| interval.parse().ok())
+                .unwrap_or(toml_ntp_sync_interval_minutes),
             timezone_offset_hours: option_env!("CHARGER_TIMEZONE_OFFSET_HOURS")
                 .and_then(|offset| offset.parse().ok())
                 .unwrap_or(toml_timezone_offset),
@@ -120,6 +126,9 @@ impl Config {
                 .unwrap_or(1883),
             mqtt_client_id: option_env!("CHARGER_MQTT_CLIENT_ID").unwrap_or("esp32c6-charger-001"),
             ntp_server: option_env!("CHARGER_NTP_SERVER").unwrap_or("pool.ntp.org"),
+            ntp_sync_interval_minutes: option_env!("CHARGER_NTP_SYNC_INTERVAL_MINUTES")
+                .and_then(|interval| interval.parse().ok())
+                .unwrap_or(240),
             timezone_offset_hours: option_env!("CHARGER_TIMEZONE_OFFSET_HOURS")
                 .and_then(|offset| offset.parse().ok())
                 .unwrap_or(0),

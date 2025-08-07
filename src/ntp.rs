@@ -122,8 +122,8 @@ pub async fn ntp_sync_task(network: &'static NetworkStack) {
     let config = Config::from_config();
 
     loop {
-        if !is_time_synced() || minutes_since_last_sync() > 240 {
-            // 4 hours instead of 1
+        if !is_time_synced() || minutes_since_last_sync() > config.ntp_sync_interval_minutes as u32
+        {
             info!(
                 "NTP: Attempting time synchronization with {}",
                 config.ntp_server

@@ -4,7 +4,9 @@ use embassy_sync::{
     pubsub::PubSubChannel,
 };
 use embassy_time::{Duration, Timer};
-use log::info;
+use log::{info, warn};
+
+pub static DEFAULT_CONNECTOR_ID: u32 = 0;
 
 /// PubSub channel for charger state changes
 pub static STATE_PUBSUB: PubSubChannel<CriticalSectionRawMutex, ChargerState, 8, 4, 4> =
@@ -132,20 +134,26 @@ impl Charger {
                 ChargerState::Occupied,
                 heapless::Vec::from_slice(&[OutputEvent::ShowRejected]).unwrap(),
             ),
-            (ChargerState::Charging, InputEvent::SwipeDetected) => (
-                ChargerState::Occupied,
-                heapless::Vec::from_slice(&[OutputEvent::RemovePower, OutputEvent::Unlock])
-                    .unwrap(),
-            ),
+            (ChargerState::Charging, InputEvent::SwipeDetected) => {
+                let output_events =
+                    heapless::Vec::from_slice(&[OutputEvent::RemovePower, OutputEvent::Unlock])
+                        .unwrap_or_default();
+                (ChargerState::Occupied, output_events)
+            }
             (ChargerState::Occupied, InputEvent::RemoveCable) => {
                 (ChargerState::Available, heapless::Vec::new())
             }
-            (ChargerState::Charging, InputEvent::RemoveCable) => (
-                ChargerState::Faulted,
-                heapless::Vec::from_slice(&[OutputEvent::RemovePower]).unwrap(),
-            ),
+            (ChargerState::Charging, InputEvent::RemoveCable) => {
+                let output_events =
+                    heapless::Vec::from_slice(&[OutputEvent::RemovePower, OutputEvent::Unlock])
+                        .unwrap_or_default();
+                (ChargerState::Faulted, output_events)
+            }
             (ChargerState::Faulted, _) => (ChargerState::Available, heapless::Vec::new()),
-            _ => (ChargerState::Faulted, heapless::Vec::new()),
+            _ => {
+                warn!("Invalid or unknown transition from {current_state:?} with input {charger_input:?}");
+                (ChargerState::Faulted, heapless::Vec::new())
+            }
         };
         info!("Transition result: {new_state:?}, {events:?}");
         self.set_state(new_state).await;

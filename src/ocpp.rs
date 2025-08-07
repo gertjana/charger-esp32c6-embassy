@@ -60,7 +60,7 @@ pub fn start_transaction(id: &str, id_tag: &str) -> Message {
     Message::Call(Call::new(
         id.into(),
         Action::StartTransaction(StartTransaction {
-            connector_id: 0,
+            connector_id: charger::DEFAULT_CONNECTOR_ID,
             id_tag: id_tag.into(),
             meter_start: 0,
             reservation_id: None,
@@ -95,12 +95,10 @@ pub fn status_notification(id: &str, status: ChargerState) -> Message {
     Message::Call(Call::new(
         id.into(),
         Action::StatusNotification(StatusNotification {
-            connector_id: 0,
+            connector_id: charger::DEFAULT_CONNECTOR_ID,
             error_code: ChargePointErrorCode::NoError,
             status,
-            timestamp: Some(DateTimeWrapper::new(
-                ntp::get_date_time().unwrap_or_else(|| DateTime::from_timestamp(0, 0).unwrap()),
-            )),
+            timestamp: Some(get_timestamp()),
             info: None,
             vendor_id: None,
             vendor_error_code: None,
