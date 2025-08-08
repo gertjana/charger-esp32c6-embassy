@@ -1,6 +1,6 @@
 use core::fmt::Write;
 use embedded_graphics::{
-    mono_font::{ascii::FONT_6X10, MonoTextStyleBuilder},
+    mono_font::{ascii::{FONT_6X10, FONT_10X20}, MonoTextStyleBuilder},
     pixelcolor::BinaryColor,
     prelude::*,
     primitives::{Circle, Line, PrimitiveStyleBuilder},
@@ -99,45 +99,66 @@ where
             .draw(&mut self.display)
             .map_err(|_| "Failed to draw left line")?;
 
-        // Line 2: Current state in a right-aligned rounded rectangle with inverted text
+        // Line 2: Current state in a full-width rectangle with inverted text and larger font
         let state_text = charger_state.as_str();
-        let state_width = state_text.len() as i32 * 6; // Approximate width based on font
-
-        // Create a rounded rectangle for the state background
-        let rounded_rect_style = PrimitiveStyleBuilder::new()
+        // Using larger FONT_10X20 which is approximately 2x the size of FONT_6X10
+        let char_width = 10; // Width per character for FONT_10X20
+        
+        // Create a rectangle style for the state background
+        let rect_style = PrimitiveStyleBuilder::new()
             .fill_color(BinaryColor::On)
             .stroke_color(BinaryColor::On)
             .stroke_width(1)
             .build();
 
-        let x_position = 128 - state_width - 4; // Right-aligned with 2px padding on each side
-
-        // Draw the rounded rectangle
-        let rounded_rect = embedded_graphics::primitives::Rectangle::new(
-            Point::new(x_position, 14),
-            Size::new(state_width as u32 + 4, 12),
+        // Full width rectangle
+        let display_width = 128;
+        
+        // Use Rectangle for the full width of the display
+        let state_rect = embedded_graphics::primitives::Rectangle::new(
+            Point::new(0, 16), // Starts at left edge, positioned below header line
+            Size::new(display_width, 22), // Full width of display, height for the larger font
         )
-        .into_styled(rounded_rect_style);
+        .into_styled(rect_style);
 
-        rounded_rect
+        state_rect
             .draw(&mut self.display)
             .map_err(|_| "Failed to draw state background")?;
 
-        // Inverted text style for the state
+        // Inverted text style for the state with larger font
         let inverted_text_style = MonoTextStyleBuilder::new()
-            .font(&FONT_6X10)
+            .font(&FONT_10X20) // Using the larger font
             .text_color(BinaryColor::Off) // Inverted color
             .build();
 
-        // Draw the state text
+        // Calculate the center position for the text
+        let text_width = state_text.len() as i32 * char_width;
+        let center_x = (display_width as i32 - text_width) / 2;
+        
+        // Draw the state text - centered in the rectangle
         Text::with_baseline(
             state_text,
-            Point::new(x_position + 2, 14), // 2px padding from left edge of rectangle
+            Point::new(center_x, 16), // Centered horizontally, same vertical position
             inverted_text_style,
             Baseline::Top,
         )
         .draw(&mut self.display)
         .map_err(|_| "Failed to draw state")?;
+
+        // horizontal line0
+        let stroke_style = PrimitiveStyleBuilder::new()
+            .stroke_color(BinaryColor::On)
+            .stroke_width(1)
+            .build();
+
+        let left_line = Line::new(
+            Point::new(0, 40),   // Start point
+            Point::new(128, 40), // End point
+        );
+        left_line
+            .into_styled(stroke_style)
+            .draw(&mut self.display)
+            .map_err(|_| "Failed to draw left line")?;
 
         // Line 4: IP Address
         let mut ip_line = heapless::String::<21>::new();
@@ -147,11 +168,11 @@ where
             let _ = write!(ip_line, "Not Connected");
         }
 
-        Text::with_baseline(&ip_line, Point::new(0, 36), text_style, Baseline::Top)
+        Text::with_baseline(&ip_line, Point::new(0, 46), text_style, Baseline::Top) // Moved down 4 pixels
             .draw(&mut self.display)
             .map_err(|_| "Failed to draw IP address")?;
 
-        // Line 5: Current local time (if NTP is synced)
+            // Line 5: Current local time (if NTP is synced)
         let mut time_line = heapless::String::<21>::new();
         if crate::ntp::is_time_synced() {
             let local_time = crate::ntp::get_local_time_formatted(config.timezone_offset_hours);
@@ -161,7 +182,7 @@ where
             let _ = write!(time_line, "Time Not Synced");
         }
 
-        Text::with_baseline(&time_line, Point::new(0, 48), text_style, Baseline::Top)
+        Text::with_baseline(&time_line, Point::new(0, 56), text_style, Baseline::Top) // Moved down 4 pixels
             .draw(&mut self.display)
             .map_err(|_| "Failed to draw time")?;
 

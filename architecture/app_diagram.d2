@@ -10,6 +10,12 @@ classes: {
     style: {
       fill: lightgreen
     }
+    height: 120
+  } 
+  network_task: {
+    style: {
+      fill: lightgreen
+    }
   } 
   channel: {
     style: {
@@ -17,7 +23,12 @@ classes: {
     }
     shape: queue
   }
-  client: {style: {fill: yellow}}
+  client: {
+    style: {
+      fill: yellow
+    }
+    height: 150
+  }
   ocpp: {
     style: {fill: lightblue}
   }
@@ -121,12 +132,12 @@ Main: Application Clients, Tasks and Channels {
   Network: {
     grid-columns: 1
     grid-gap: 45
-    Wifi Connection.class: task
+    Wifi Connection.class: network_task
     Wifi Connection.box: |md
       Handles opening and reconnecting the wifi connection
     |
-    Runner.class: task
-    Runner.bos: |md
+    Runner.class: network_task
+    Runner.box: |md
       runs embassy's network stack
     |
   }
@@ -212,31 +223,37 @@ Main: Application Clients, Tasks and Channels {
       label: ""
       icon: "./images/padlock.png"
       shape: image
+      height: 100
     }
     Led {
       label: ""
       icon: "./images/led.png"
       shape: image
+      height: 100
     }
     Relais {
       label: ""
       icon: "./images/circuit.png"
       shape: image
+      height: 100
     }
     RFID {
       label: ""
       icon: "./images/money.png"
       shape: image
+      height: 100
     }
     Cable {
       label: ""
       icon: "./images/vehicle.png"
       shape: image
+      height: 100
     }
     Display {
       label: ""
       icon: "./images/display-frame.png"
       shape: image
+      height: 100
     }
   }
   Authorization Handler.class: ocpp
