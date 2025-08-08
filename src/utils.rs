@@ -84,6 +84,8 @@ pub async fn debounce_input(
         } else {
             // Reset if reading changed
             stable_count = 1;
+        }
+    }
     loop {
         Timer::after(config.debounce_time).await;
 
