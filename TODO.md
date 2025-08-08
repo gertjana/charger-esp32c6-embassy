@@ -10,7 +10,7 @@
 * ~~set initial states based on cable inserted or not~~
 * Start- and StopTransaction
 * Clean up log and make it more consistent
-* Implemment code for RFID-RC522 SPI Module to do proper charge card swipes
+* Implement code for RFID-RC522 SPI Module to do proper charge card swipes
 * Proper (typesafe) Response Handler
 * TLS Connection for MQTT
 
