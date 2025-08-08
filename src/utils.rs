@@ -84,7 +84,20 @@ pub async fn debounce_input(
         } else {
             // Reset if reading changed
             stable_count = 1;
+    loop {
+        Timer::after(config.debounce_time).await;
+
+        let new_reading = button.is_low();
+
+        if new_reading == consistent_state {
+            stable_count += 1;
+            if stable_count >= config.stable_readings_required {
+                break;
+            }
+        } else {
+            // Reading changed, start counting for the new state
             consistent_state = new_reading;
+            stable_count = 1;
         }
     }
 
