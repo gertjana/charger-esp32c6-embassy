@@ -255,7 +255,19 @@ Main: Application Clients, Tasks and Channels {
   HeartBeat Handler.box: |md
     Periodically sends Heartbeat Request
   |
-  Charger States.InputEvents -> Charger States.States -> Charger States.OutputEvents
+  Charger States.InputEvents -> Charger States.States: {
+    style: {
+      stroke: "white"
+      stroke-width: 6
+    }
+  }
+  Charger States.States -> Charger States.OutputEvents: {
+    style: {
+      stroke: "white"
+      stroke-width: 6
+    }
+  }
+
   State PubSub Channel -> Hardware.Lock Handler -> Hardware.Lock
   State PubSub Channel -> Hardware.Led Handler -> Hardware.LED
   State PubSub Channel -> Hardware.Relais Handler -> Hardware.Relais

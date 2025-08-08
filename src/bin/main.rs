@@ -10,7 +10,7 @@ use esp32c6_embassy_charged::{
     config::Config,
     mk_static, mqtt,
     network::{self, NetworkStack},
-    ntp, ocpp,
+    ntp, ocpp, utils,
 };
 use esp_hal::{
     clock::CpuClock,
@@ -101,7 +101,17 @@ async fn main(spawner: Spawner) {
     let charger_relay = Output::new(peripherals.GPIO2, Level::Low, Default::default());
 
     let charger = mk_static!(Charger, Charger::new());
-    charger.set_state(ChargerState::Available).await;
+
+    match cable_switch.is_low() {
+        true => {
+            info!("Cable is connected, setting initial state to Occupied");
+            charger.set_state(ChargerState::Occupied).await;
+        }
+        false => {
+            info!("Cable is not connected, setting initial state to Available");
+            charger.set_state(ChargerState::Available).await;
+        }
+    }
 
     // Publish initial state to PubSub
     let initial_publisher = charger::STATE_PUBSUB.publisher().unwrap();
@@ -128,17 +138,13 @@ async fn main(spawner: Spawner) {
         .spawn(charger_led_task(onboard_led_pin, charger))
         .ok();
 
-    spawner
-        .spawn(cable_lock_task(cable_lock_pin))
-        .ok();
+    spawner.spawn(cable_lock_task(cable_lock_pin)).ok();
 
     spawner.spawn(charger_cable_task(cable_switch)).ok();
-    
+
     spawner.spawn(charger_swipe_task(swipe_switch)).ok();
-    
-    spawner
-        .spawn(charger_relay_task(charger_relay))
-        .ok();
+
+    spawner.spawn(charger_relay_task(charger_relay)).ok();
 
     spawner
         .spawn(charger::statemachine_handler_task(charger))
@@ -282,67 +288,43 @@ async fn charger_led_task(mut led_pin: Output<'static>, charger: &'static Charge
     }
 }
 
-
-
-
 /// Task to detect charger cable connection and disconnection
 #[embassy_executor::task]
 async fn charger_cable_task(mut button: Input<'static>) {
     info!("Task started: Charger cable Detector");
-    
+
     // Track the stable state of the button
     let mut last_stable_state = button.is_low();
-    let debounce_time = Duration::from_millis(50);
-    let stable_readings_required = 5;
-    
+
+    // Configure debouncing parameters
+    let config = utils::DebounceConfig {
+        debounce_time: Duration::from_millis(50),
+        stable_readings_required: 5,
+        cooldown_time: Duration::from_millis(10),
+    };
+
     loop {
-        // Wait for any edge detection
-        button.wait_for_any_edge().await;
-        
-        // Initial reading after edge detection
-        let current_state = button.is_low();
-        
-        // Only proceed with debouncing if the state has potentially changed
-        if current_state != last_stable_state {
-            let mut stable_count = 0;
-            let mut consistent_state = current_state;
-            
-            // Debounce algorithm: require multiple consistent readings
-            for _ in 0..stable_readings_required {
-                Timer::after(debounce_time).await;
-                
-                // Check if the reading is stable
-                let new_reading = button.is_low();
-                if new_reading == consistent_state {
-                    stable_count += 1;
-                } else {
-                    // Reset if reading changed
-                    stable_count = 1;
-                    consistent_state = new_reading;
-                }
-            }
-            
-            // If we got stable readings and they differ from last stable state
-            if stable_count >= stable_readings_required && consistent_state != last_stable_state {
-                // Update the stable state
-                last_stable_state = consistent_state;
-                
-                // Send the appropriate event
-                let cable_event = if consistent_state {
-                    InputEvent::InsertCable
-                } else {
-                    InputEvent::RemoveCable
-                };
-                
-                info!("Cable: Detected stable event: {cable_event:?}, sending to state machine");
-                charger::STATE_IN_CHANNEL.send(cable_event).await;
+        // Use the utility function to debounce input (toggle mode)
+        if let Some(new_state) = utils::debounce_input(
+            &mut button,
+            &mut last_stable_state,
+            false, // toggle mode
+            &config,
+        )
+        .await
+        {
+            // Send the appropriate event based on the new state
+            let cable_event = if new_state {
+                InputEvent::InsertCable
             } else {
-                info!("Cable: Ignoring unstable transition");
-            }
+                InputEvent::RemoveCable
+            };
+
+            info!("Cable: Detected stable event: {cable_event:?}, sending to state machine");
+            charger::STATE_IN_CHANNEL.send(cable_event).await;
+        } else {
+            // Debounce function will already log unstable transitions
         }
-        
-        // Add a small delay before starting the next edge detection cycle
-        Timer::after(Duration::from_millis(10)).await;
     }
 }
 
@@ -350,50 +332,42 @@ async fn charger_cable_task(mut button: Input<'static>) {
 #[embassy_executor::task]
 async fn charger_swipe_task(mut button: Input<'static>) {
     info!("Task started: Charger Swipe Detector");
-    
-    let debounce_time = Duration::from_millis(50);
-    let stable_readings_required = 5;
-    let mut last_active = false;  // Track if we've already processed a swipe
-    
-    loop {
-        button.wait_for_any_edge().await;
 
-        // Only trigger on falling edges (button pressed/card swiped)
-        if button.is_low() {
-            // Don't reprocess if we're already in an active swipe cycle
-            if !last_active {
-                // Verify the press is stable with multiple readings
-                let mut stable_count = 0;
-                
-                for _ in 0..stable_readings_required {
-                    Timer::after(debounce_time).await;
-                    
-                    if button.is_low() {
-                        stable_count += 1;
-                    } else {
-                        // Button released during verification, abort
-                        break;
-                    }
-                }
-                
-                // Only process if we had enough stable readings
-                if stable_count >= stable_readings_required {
-                    info!("Swipe: Card swipe verified, sending event to state machine");
-                    charger::STATE_IN_CHANNEL
-                        .send(InputEvent::SwipeDetected)
-                        .await;
-                    
-                    // Mark as active to prevent duplicate processing
-                    last_active = true;
-                }
+    // State tracking (not used by the debounce function in one-shot mode, but we need a placeholder)
+    let mut last_stable_state = button.is_low();
+    let mut last_active = false; // Track if we've already processed a swipe
+
+    // Configure debouncing parameters
+    let config = utils::DebounceConfig {
+        debounce_time: Duration::from_millis(50),
+        stable_readings_required: 5,
+        cooldown_time: Duration::from_millis(10),
+    };
+
+    loop {
+        // Use the utility function to debounce input (one-shot mode for button press only)
+        if let Some(is_pressed) = utils::debounce_input(
+            &mut button,
+            &mut last_stable_state,
+            true, // one-shot mode (only detect presses)
+            &config,
+        )
+        .await
+        {
+            // Only process if the button is pressed and we're not already processing a swipe
+            if is_pressed && !last_active {
+                info!("Swipe: Card swipe verified, sending event to state machine");
+                charger::STATE_IN_CHANNEL
+                    .send(InputEvent::SwipeDetected)
+                    .await;
+
+                // Mark as active to prevent duplicate processing
+                last_active = true;
             }
-        } else {
+        } else if !button.is_low() {
             // Button is high (released) - reset active state for next swipe
             last_active = false;
         }
-        
-        // Short delay before next detection
-        Timer::after(Duration::from_millis(10)).await;
     }
 }
 
@@ -439,16 +413,21 @@ async fn cable_lock_task(mut cable_lock_pin: Output<'static>) {
                 _ if output_events.contains(&OutputEvent::Lock) => {
                     info!("Cable Lock: Locking cable for charging state");
                     cable_lock_pin.set_high();
-                                }
+                }
                 _ if output_events.contains(&OutputEvent::Unlock) => {
-                    info!("Cable Lock: Unlocking cable for state: {}", current_state.as_str());
+                    info!(
+                        "Cable Lock: Unlocking cable for state: {}",
+                        current_state.as_str()
+                    );
                     cable_lock_pin.set_low();
                 }
                 _ => {
-                    info!("Cable Lock: No action for state: {}", current_state.as_str());
+                    info!(
+                        "Cable Lock: No action for state: {}",
+                        current_state.as_str()
+                    );
                 }
             }
         }
     }
-
 }
