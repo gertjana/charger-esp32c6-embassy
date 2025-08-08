@@ -89,7 +89,7 @@ pub async fn debounce_input(
     }
 
     // If we have enough stable readings
-    if stable_count >= config.stable_readings_required {
+    if stable_count == config.stable_readings_required {
         // For toggle mode, update the last stable state
         if !one_shot {
             *last_stable_state = consistent_state;
