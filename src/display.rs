@@ -24,58 +24,11 @@ impl<I2C> DisplayManager<I2C>
 where
     I2C: embedded_hal::i2c::I2c,
 {
-    /// Scan I2C bus for devices
-    fn scan_i2c_bus(i2c: &mut I2C) -> heapless::Vec<u8, 16> {
-        let mut found_devices = heapless::Vec::new();
-        info!("Scanning I2C bus for devices...");
-
-        for addr in 0x08..=0x77 {
-            // Try to write to each address
-            let result = i2c.write(addr, &[]);
-            match result {
-                Ok(_) => {
-                    info!("Found I2C device at address: 0x{addr:02X}");
-                    let _ = found_devices.push(addr);
-                }
-                Err(_) => {
-                    // No device at this address, continue scanning
-                }
-            }
-        }
-
-        if found_devices.is_empty() {
-            info!("No I2C devices found! Check wiring and pull-up resistors.");
-        } else {
-            info!("Found {} I2C device(s)", found_devices.len());
-        }
-
-        found_devices
-    }
-
     /// Initialize the SSD1306 display
-    pub fn new(mut i2c: I2C) -> Result<Self, &'static str> {
+    pub fn new(i2c: I2C) -> Result<Self, &'static str> {
         info!("Initializing SSD1306 display...");
 
-        // First, scan the I2C bus to see what devices are available
-        let devices = Self::scan_i2c_bus(&mut i2c);
-
-        // Check if we found any devices
-        if devices.is_empty() {
-            return Err("No I2C devices found - check connections and pull-up resistors");
-        }
-
-        // Look for common SSD1306 addresses
-        let display_addr = if devices.contains(&0x3C) {
-            info!("Found device at 0x3C - typical SSD1306 address");
-            0x3C
-        } else if devices.contains(&0x3D) {
-            info!("Found device at 0x3D - alternative SSD1306 address");
-            0x3D
-        } else {
-            info!("No SSD1306 found at common addresses (0x3C, 0x3D)");
-            info!("Available devices: {devices:?}");
-            return Err("SSD1306 not found at expected addresses");
-        };
+        let display_addr = 0x3C;
 
         // Try to initialize with the detected address
         info!("Trying I2C address 0x{display_addr:02X}...");
@@ -149,38 +102,39 @@ where
         // Line 2: Current state in a right-aligned rounded rectangle with inverted text
         let state_text = charger_state.as_str();
         let state_width = state_text.len() as i32 * 6; // Approximate width based on font
-        
+
         // Create a rounded rectangle for the state background
         let rounded_rect_style = PrimitiveStyleBuilder::new()
             .fill_color(BinaryColor::On)
             .stroke_color(BinaryColor::On)
             .stroke_width(1)
             .build();
-        
+
         let x_position = 128 - state_width - 4; // Right-aligned with 2px padding on each side
-        
+
         // Draw the rounded rectangle
         let rounded_rect = embedded_graphics::primitives::Rectangle::new(
-            Point::new(x_position, 14), 
-            Size::new(state_width as u32 + 4, 12)
-        ).into_styled(rounded_rect_style);
-        
+            Point::new(x_position, 14),
+            Size::new(state_width as u32 + 4, 12),
+        )
+        .into_styled(rounded_rect_style);
+
         rounded_rect
             .draw(&mut self.display)
             .map_err(|_| "Failed to draw state background")?;
-            
+
         // Inverted text style for the state
         let inverted_text_style = MonoTextStyleBuilder::new()
             .font(&FONT_6X10)
             .text_color(BinaryColor::Off) // Inverted color
             .build();
-            
+
         // Draw the state text
         Text::with_baseline(
-            state_text, 
+            state_text,
             Point::new(x_position + 2, 14), // 2px padding from left edge of rectangle
-            inverted_text_style, 
-            Baseline::Top
+            inverted_text_style,
+            Baseline::Top,
         )
         .draw(&mut self.display)
         .map_err(|_| "Failed to draw state")?;

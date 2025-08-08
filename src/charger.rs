@@ -9,8 +9,13 @@ use log::{info, warn};
 pub static DEFAULT_CONNECTOR_ID: u32 = 0;
 
 /// PubSub channel for charger state changes
-pub static STATE_PUBSUB: PubSubChannel<CriticalSectionRawMutex, (ChargerState, heapless::Vec<OutputEvent, 2>), 8, 5, 4> =
-    PubSubChannel::new();
+pub static STATE_PUBSUB: PubSubChannel<
+    CriticalSectionRawMutex,
+    (ChargerState, heapless::Vec<OutputEvent, 2>),
+    8,
+    5,
+    4,
+> = PubSubChannel::new();
 
 /// Message queue for charger input events
 pub static STATE_IN_CHANNEL: Channel<CriticalSectionRawMutex, InputEvent, 10> = Channel::new();
