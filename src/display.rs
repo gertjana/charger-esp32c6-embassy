@@ -1,6 +1,9 @@
 use core::fmt::Write;
 use embedded_graphics::{
-    mono_font::{ascii::{FONT_6X10, FONT_10X20}, MonoTextStyleBuilder},
+    mono_font::{
+        ascii::{FONT_10X20, FONT_6X10},
+        MonoTextStyleBuilder,
+    },
     pixelcolor::BinaryColor,
     prelude::*,
     primitives::{Circle, Line, PrimitiveStyleBuilder},
@@ -103,7 +106,7 @@ where
         let state_text = charger_state.as_str();
         // Using larger FONT_10X20 which is approximately 2x the size of FONT_6X10
         let char_width = 10; // Width per character for FONT_10X20
-        
+
         // Create a rectangle style for the state background
         let rect_style = PrimitiveStyleBuilder::new()
             .fill_color(BinaryColor::On)
@@ -113,10 +116,10 @@ where
 
         // Full width rectangle
         let display_width = 128;
-        
+
         // Use Rectangle for the full width of the display
         let state_rect = embedded_graphics::primitives::Rectangle::new(
-            Point::new(0, 16), // Starts at left edge, positioned below header line
+            Point::new(0, 16),            // Starts at left edge, positioned below header line
             Size::new(display_width, 22), // Full width of display, height for the larger font
         )
         .into_styled(rect_style);
@@ -134,7 +137,7 @@ where
         // Calculate the center position for the text
         let text_width = state_text.len() as i32 * char_width;
         let center_x = (display_width as i32 - text_width) / 2;
-        
+
         // Draw the state text - centered in the rectangle
         Text::with_baseline(
             state_text,
@@ -172,7 +175,7 @@ where
             .draw(&mut self.display)
             .map_err(|_| "Failed to draw IP address")?;
 
-            // Line 5: Current local time (if NTP is synced)
+        // Line 5: Current local time (if NTP is synced)
         let mut time_line = heapless::String::<21>::new();
         if crate::ntp::is_time_synced() {
             let local_time = crate::ntp::get_local_time_formatted(config.timezone_offset_hours);

@@ -10,7 +10,7 @@ use esp32c6_embassy_charged::{
     config::Config,
     mk_static, mqtt,
     network::{self, NetworkStack},
-    ntp, ocpp, utils,
+    ntp, ocpp,
 };
 use esp_hal::{
     clock::CpuClock,
@@ -293,38 +293,21 @@ async fn charger_led_task(mut led_pin: Output<'static>, charger: &'static Charge
 async fn charger_cable_task(mut button: Input<'static>) {
     info!("Task started: Charger cable Detector");
 
-    // Track the stable state of the button
-    let mut last_stable_state = button.is_low();
-
-    // Configure debouncing parameters
-    let config = utils::DebounceConfig {
-        debounce_time: Duration::from_millis(50),
-        stable_readings_required: 5,
-        cooldown_time: Duration::from_millis(10),
-    };
-
     loop {
-        // Use the utility function to debounce input (toggle mode)
-        if let Some(new_state) = utils::debounce_input(
-            &mut button,
-            &mut last_stable_state,
-            false, // toggle mode
-            &config,
-        )
-        .await
-        {
-            // Send the appropriate event based on the new state
-            let cable_event = if new_state {
-                InputEvent::InsertCable
-            } else {
-                InputEvent::RemoveCable
-            };
+        button.wait_for_any_edge().await;
 
-            info!("Cable: Detected stable event: {cable_event:?}, sending to state machine");
-            charger::STATE_IN_CHANNEL.send(cable_event).await;
+        Timer::after(Duration::from_millis(300)).await; // Debounce delay
+        let new_state = button.is_low();
+
+        // Send the appropriate event based on the new state
+        let cable_event = if new_state {
+            InputEvent::InsertCable
         } else {
-            // Debounce function will already log unstable transitions
-        }
+            InputEvent::RemoveCable
+        };
+
+        info!("Cable: Detected stable event: {cable_event:?}, sending to state machine");
+        charger::STATE_IN_CHANNEL.send(cable_event).await;
     }
 }
 
@@ -333,40 +316,17 @@ async fn charger_cable_task(mut button: Input<'static>) {
 async fn charger_swipe_task(mut button: Input<'static>) {
     info!("Task started: Charger Swipe Detector");
 
-    // State tracking (not used by the debounce function in one-shot mode, but we need a placeholder)
-    let mut last_stable_state = button.is_low();
-    let mut last_active = false; // Track if we've already processed a swipe
-
-    // Configure debouncing parameters
-    let config = utils::DebounceConfig {
-        debounce_time: Duration::from_millis(50),
-        stable_readings_required: 5,
-        cooldown_time: Duration::from_millis(10),
-    };
-
     loop {
-        // Use the utility function to debounce input (one-shot mode for button press only)
-        if let Some(is_pressed) = utils::debounce_input(
-            &mut button,
-            &mut last_stable_state,
-            true, // one-shot mode (only detect presses)
-            &config,
-        )
-        .await
-        {
-            // Only process if the button is pressed and we're not already processing a swipe
-            if is_pressed && !last_active {
-                info!("Swipe: Card swipe verified, sending event to state machine");
-                charger::STATE_IN_CHANNEL
-                    .send(InputEvent::SwipeDetected)
-                    .await;
+        button.wait_for_any_edge().await;
+        Timer::after(Duration::from_millis(300)).await; // Debounce delay
+        let is_swiped = button.is_low();
 
-                // Mark as active to prevent duplicate processing
-                last_active = true;
-            }
-        } else if !button.is_low() {
-            // Button is high (released) - reset active state for next swipe
-            last_active = false;
+        // Only process if the button is pressed and we're not already processing a swipe
+        if is_swiped {
+            info!("Swipe: Card swipe verified, sending event to state machine");
+            charger::STATE_IN_CHANNEL
+                .send(InputEvent::SwipeDetected)
+                .await;
         }
     }
 }
