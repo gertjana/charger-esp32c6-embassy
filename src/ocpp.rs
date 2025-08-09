@@ -353,7 +353,7 @@ pub async fn response_handler_task(charger: &'static Charger) {
                     info!("OCPP: Received Authorize message");
                 } else if message_str.contains("StartTransaction") {
                     info!("OCPP: Received StartTransaction message");
-                    //extract transaction ID from the message
+                    // Extract transaction ID from the message.
                     if let Some(transaction_id) = message_str.split('"').nth(3) {
                         if let Ok(id) = transaction_id.parse::<i32>() {
                             charger.set_transaction_id(id).await;
