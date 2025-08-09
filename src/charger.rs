@@ -13,7 +13,7 @@ pub static STATE_PUBSUB: PubSubChannel<
     CriticalSectionRawMutex,
     (ChargerState, heapless::Vec<OutputEvent, 2>),
     8,
-    5,
+    6,
     4,
 > = PubSubChannel::new();
 
@@ -90,6 +90,7 @@ impl ChargerState {
 
 pub struct Charger {
     state: Mutex<CriticalSectionRawMutex, RefCell<ChargerState>>,
+    transaction_id: Mutex<CriticalSectionRawMutex, RefCell<i32>>,
 }
 
 impl Default for Charger {
@@ -102,6 +103,7 @@ impl Charger {
     pub fn new() -> Self {
         Self {
             state: Mutex::new(RefCell::new(ChargerState::default())),
+            transaction_id: Mutex::new(RefCell::new(0)),
         }
     }
 
@@ -114,6 +116,17 @@ impl Charger {
     pub async fn set_state(&self, new_state: ChargerState) {
         let state_guard = self.state.lock().await;
         *state_guard.borrow_mut() = new_state;
+    }
+
+    pub async fn get_transaction_id(&self) -> i32 {
+        let transaction_id_guard = self.transaction_id.lock().await;
+        let id = *transaction_id_guard.borrow();
+        id
+    }
+
+    pub async fn set_transaction_id(&self, new_id: i32) {
+        let transaction_id_guard = self.transaction_id.lock().await;
+        *transaction_id_guard.borrow_mut() = new_id;
     }
 
     pub async fn transition(
