@@ -16,9 +16,10 @@ use ocpp_rs::v16::{
 };
 
 use crate::{
-    charger::{self, Charger, ChargerState, InputEvent},
+    charger::{self, Charger, ChargerState, InputEvent, OutputEvent},
     config::Config,
-    mqtt, ntp, ocpp,
+    mqtt::{self},
+    ntp, ocpp,
 };
 
 /// Thread-safe static counter for OCPP message IDs
@@ -265,13 +266,72 @@ pub async fn boot_notification_task() {
     }
 }
 
+#[embassy_executor::task]
+pub async fn transaction_handler_task(charger: &'static Charger) {
+    info!("Task started: OCPP Transaction Handler");
+
+    let mut subscriber = charger::STATE_PUBSUB.subscriber().unwrap();
+
+    loop {
+        // Wait for state changes via PubSub
+        if let embassy_sync::pubsub::WaitResult::Message((current_state, output_events)) =
+            subscriber.next_message().await
+        {
+            match current_state {
+                ChargerState::Charging if output_events.contains(&OutputEvent::ApplyPower) => {
+                    let message = parse::serialize_message(&start_transaction(
+                        &next_ocpp_message_id(),
+                        "123456",
+                    ))
+                    .unwrap();
+                    let mut msg_vec = heapless::Vec::new();
+                    if msg_vec.extend_from_slice(message.as_bytes()).is_ok() {
+                        match mqtt::MQTT_SEND_CHANNEL.try_send(msg_vec) {
+                            Ok(()) => {
+                                info!("Transaction Handler: Successfully sent StartTransaction message");
+                            }
+                            Err(_) => {
+                                warn!("Transaction Handler: Failed to send StartTransaction message, MQTT queue full");
+                            }
+                        }
+                    }
+                }
+                ChargerState::Occupied if output_events.contains(&OutputEvent::RemovePower) => {
+                    let message = parse::serialize_message(&stop_transaction(
+                        &next_ocpp_message_id(),
+                        charger.get_transaction_id().await,
+                        "123456",
+                    ))
+                    .unwrap(); // TODO: Get transaction ID from state.
+                    let mut msg_vec = heapless::Vec::new();
+                    if msg_vec.extend_from_slice(message.as_bytes()).is_ok() {
+                        match mqtt::MQTT_SEND_CHANNEL.try_send(msg_vec) {
+                            Ok(()) => {
+                                info!("Transaction Handler: Successfully sent StopTransaction message");
+                            }
+                            Err(_) => {
+                                warn!("Transaction Handler: Failed to send StopTransaction message, MQTT queue full");
+                            }
+                        }
+                    } else {
+                        warn!("Transaction Handler: StopTransaction message too large for queue");
+                    }
+                }
+                _ => {
+                    // ignoring other states
+                }
+            }
+        }
+    }
+}
+
 /// Task to handle incoming OCPP responses from MQTT
 /// The OCPP library just have proper support for CallResult and CallError
 /// so for now we just parse the messages as strings and use string matching
 /// to determine the type of message received
 /// This is a temporary solution until we have a proper OCPP response handler
 #[embassy_executor::task]
-pub async fn response_handler_task() {
+pub async fn response_handler_task(charger: &'static Charger) {
     info!("Task started: OCPP Response Handler");
 
     loop {
@@ -293,6 +353,12 @@ pub async fn response_handler_task() {
                     info!("OCPP: Received Authorize message");
                 } else if message_str.contains("StartTransaction") {
                     info!("OCPP: Received StartTransaction message");
+                    // Extract transaction ID from the message.
+                    if let Some(transaction_id) = message_str.split('"').nth(3) {
+                        if let Ok(id) = transaction_id.parse::<i32>() {
+                            charger.set_transaction_id(id).await;
+                        }
+                    }
                 } else if message_str.contains("StopTransaction") {
                     info!("OCPP: Received StopTransaction message");
                 } else if message_str.contains("RemoteStartTransaction") {

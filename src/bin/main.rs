@@ -210,7 +210,7 @@ async fn main(spawner: Spawner) {
     }
 
     // Start OCPP-related tasks
-    spawner.spawn(ocpp::response_handler_task()).ok();
+    spawner.spawn(ocpp::response_handler_task(charger)).ok();
 
     spawner.spawn(ocpp::heartbeat_task()).ok();
 
@@ -219,6 +219,8 @@ async fn main(spawner: Spawner) {
     spawner.spawn(ocpp::status_notification_task(charger)).ok();
 
     spawner.spawn(ocpp::authorize_task()).ok();
+
+    spawner.spawn(ocpp::transaction_handler_task(charger)).ok();
 
     let mut old_state = charger.get_state().await;
     let mut last_display_update = Instant::now();
