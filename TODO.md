@@ -8,7 +8,7 @@
 * ~~Implemented Lock handler~~
 * ~~Refactor de-bouncing into a util method~~
 * ~~set initial states based on cable inserted or not~~
-* Start- and StopTransaction
+* ~~Start- and StopTransaction~~
 * Clean up log and make it more consistent
 * Implement code for RFID-RC522 SPI Module to do proper charge card swipes
 * Proper (typesafe) Response Handler
@@ -22,5 +22,7 @@
   * After running for a while (hours), the time shown on the display stops (app halts)
   * WHen time is not synced initially, the next sync halts the application or panics
 * Resetting after error, should also evaluate the hardware to set the correct state
+* Don't send StatusNofication on State Authorizing
+* TransactionID doesn't seem to get stored correctly
 
 
