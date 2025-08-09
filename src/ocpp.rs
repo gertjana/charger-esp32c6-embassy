@@ -302,7 +302,7 @@ pub async fn transaction_handler_task(charger: &'static Charger) {
                         charger.get_transaction_id().await,
                         "123456",
                     ))
-                    .unwrap(); // todo get transaction ID from state
+                    .unwrap(); // TODO: Get transaction ID from state.
                     let mut msg_vec = heapless::Vec::new();
                     if msg_vec.extend_from_slice(message.as_bytes()).is_ok() {
                         match mqtt::MQTT_SEND_CHANNEL.try_send(msg_vec) {
