@@ -256,6 +256,11 @@ Main: Application Clients, Tasks and Channels {
       height: 100
     }
   }
+  Transaction Handler.class: ocpp
+  Transaction Handler.box: |md
+    - handles OCPP transactions
+    - StartTransaction/StopTransaction
+  |
   Authorization Handler.class: ocpp
   Authorization Handler.box: |md
     - sends Authorize Request to OCPP Server
@@ -293,6 +298,7 @@ Main: Application Clients, Tasks and Channels {
   Hardware.Cable -> Hardware.Cable Detection Handler -> State In Channel
   Hardware.Display Handler -> Hardware.Display
   OCPP Receive Channel -> OCPP Response Handler -> State In Channel
+  OCPP Response Handler -> Transaction Handler -> OCPP Send Channel
   NTP Sync -> NTP CLient
   OCPP Send Channel -> MQTT Client -> OCPP Receive Channel
   HeartBeat Handler -> OCPP Send Channel
