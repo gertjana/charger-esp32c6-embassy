@@ -299,7 +299,7 @@ pub async fn transaction_handler_task(charger: &'static Charger) {
                 ChargerState::Occupied if output_events.contains(&OutputEvent::RemovePower) => {
                     // Get the transaction ID and validate it
                     let transaction_id = charger.get_transaction_id().await;
-                    
+
                     if transaction_id <= 0 {
                         warn!("Transaction Handler: Invalid transaction ID: {transaction_id}, cannot send StopTransaction");
                     } else {
@@ -310,7 +310,7 @@ pub async fn transaction_handler_task(charger: &'static Charger) {
                             "123456",
                         ))
                         .unwrap();
-                        
+
                         let mut msg_vec = heapless::Vec::new();
                         if msg_vec.extend_from_slice(message.as_bytes()).is_ok() {
                             match mqtt::MQTT_SEND_CHANNEL.try_send(msg_vec) {
@@ -324,7 +324,9 @@ pub async fn transaction_handler_task(charger: &'static Charger) {
                                 }
                             }
                         } else {
-                            warn!("Transaction Handler: StopTransaction message too large for queue");
+                            warn!(
+                                "Transaction Handler: StopTransaction message too large for queue"
+                            );
                         }
                     }
                 }
@@ -349,8 +351,10 @@ pub async fn response_handler_task(charger: &'static Charger) {
         // Use a timeout when receiving to prevent indefinite blocking
         let message = match embassy_time::with_timeout(
             Duration::from_millis(1000), // 1 second timeout
-            mqtt::MQTT_RECEIVE_CHANNEL.receive()
-        ).await {
+            mqtt::MQTT_RECEIVE_CHANNEL.receive(),
+        )
+        .await
+        {
             Ok(msg) => msg,
             Err(_) => {
                 // Timeout occurred, continue the loop
@@ -385,20 +389,23 @@ pub async fn response_handler_task(charger: &'static Charger) {
                         for c in message_str[start_pos..]
                             .chars()
                             .skip_while(|c| !c.is_ascii_digit()) // Skip any whitespace before number
-                            .take_while(|c| c.is_ascii_digit())  // Take only digits
+                            .take_while(|c| c.is_ascii_digit())
+                        // Take only digits
                         {
                             let _ = id_str.push(c);
                         }
-                        
+
                         // Parse the extracted string to an integer
                         if let Ok(id) = id_str.parse::<i32>() {
                             info!("OCPP: Extracted transaction ID: {id} from response");
-                            
+
                             // Use a timeout to prevent deadlock if the mutex is held too long
                             match embassy_time::with_timeout(
                                 Duration::from_millis(500),
-                                charger.set_transaction_id(id)
-                            ).await {
+                                charger.set_transaction_id(id),
+                            )
+                            .await
+                            {
                                 Ok(_) => info!("OCPP: Successfully set transaction ID to {id}"),
                                 Err(_) => warn!("OCPP: Timeout while trying to set transaction ID"),
                             }
@@ -406,7 +413,9 @@ pub async fn response_handler_task(charger: &'static Charger) {
                             warn!("OCPP: Failed to parse transaction ID from: {id_str}");
                         }
                     } else {
-                        warn!("OCPP: Could not find transactionId field in response: {message_str}");
+                        warn!(
+                            "OCPP: Could not find transactionId field in response: {message_str}"
+                        );
                     }
                 } else if message_str.contains("StopTransaction") {
                     info!("OCPP: Received StopTransaction message");
