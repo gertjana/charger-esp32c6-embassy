@@ -297,24 +297,37 @@ pub async fn transaction_handler_task(charger: &'static Charger) {
                     }
                 }
                 ChargerState::Occupied if output_events.contains(&OutputEvent::RemovePower) => {
-                    let message = parse::serialize_message(&stop_transaction(
-                        &next_ocpp_message_id(),
-                        charger.get_transaction_id().await,
-                        "123456",
-                    ))
-                    .unwrap(); // TODO: Get transaction ID from state.
-                    let mut msg_vec = heapless::Vec::new();
-                    if msg_vec.extend_from_slice(message.as_bytes()).is_ok() {
-                        match mqtt::MQTT_SEND_CHANNEL.try_send(msg_vec) {
-                            Ok(()) => {
-                                info!("Transaction Handler: Successfully sent StopTransaction message");
-                            }
-                            Err(_) => {
-                                warn!("Transaction Handler: Failed to send StopTransaction message, MQTT queue full");
-                            }
-                        }
+                    // Get the transaction ID and validate it
+                    let transaction_id = charger.get_transaction_id().await;
+
+                    if transaction_id <= 0 {
+                        warn!("Transaction Handler: Invalid transaction ID: {transaction_id}, cannot send StopTransaction");
                     } else {
-                        warn!("Transaction Handler: StopTransaction message too large for queue");
+                        info!("Transaction Handler: Sending StopTransaction with ID: {transaction_id}");
+                        let message = parse::serialize_message(&stop_transaction(
+                            &next_ocpp_message_id(),
+                            transaction_id,
+                            "123456",
+                        ))
+                        .unwrap();
+
+                        let mut msg_vec = heapless::Vec::new();
+                        if msg_vec.extend_from_slice(message.as_bytes()).is_ok() {
+                            match mqtt::MQTT_SEND_CHANNEL.try_send(msg_vec) {
+                                Ok(()) => {
+                                    info!("Transaction Handler: Successfully sent StopTransaction message");
+                                    // Reset transaction ID after successfully sending stop message
+                                    charger.set_transaction_id(0).await;
+                                }
+                                Err(_) => {
+                                    warn!("Transaction Handler: Failed to send StopTransaction message, MQTT queue full");
+                                }
+                            }
+                        } else {
+                            warn!(
+                                "Transaction Handler: StopTransaction message too large for queue"
+                            );
+                        }
                     }
                 }
                 _ => {
@@ -335,7 +348,20 @@ pub async fn response_handler_task(charger: &'static Charger) {
     info!("Task started: OCPP Response Handler");
 
     loop {
-        let message = mqtt::MQTT_RECEIVE_CHANNEL.receive().await;
+        // Use a timeout when receiving to prevent indefinite blocking
+        let message = match embassy_time::with_timeout(
+            Duration::from_millis(1000), // 1 second timeout
+            mqtt::MQTT_RECEIVE_CHANNEL.receive(),
+        )
+        .await
+        {
+            Ok(msg) => msg,
+            Err(_) => {
+                // Timeout occurred, continue the loop
+                Timer::after(Duration::from_millis(10)).await;
+                continue;
+            }
+        };
         let mut new_input_event: InputEvent = InputEvent::None;
         match from_utf8(&message) {
             Ok(message_str) => {
@@ -352,12 +378,44 @@ pub async fn response_handler_task(charger: &'static Charger) {
                     }
                     info!("OCPP: Received Authorize message");
                 } else if message_str.contains("StartTransaction") {
-                    info!("OCPP: Received StartTransaction message");
-                    // Extract transaction ID from the message.
-                    if let Some(transaction_id) = message_str.split('"').nth(3) {
-                        if let Ok(id) = transaction_id.parse::<i32>() {
-                            charger.set_transaction_id(id).await;
+                    info!("OCPP: Received StartTransaction message: {message_str}");
+                    // Extract transaction ID from the message using a more robust approach
+                    // Looking for the transactionId field in the JSON response
+                    if let Some(transaction_id_part) = message_str.find("\"transactionId\":") {
+                        // Find the start position of the number after "transactionId":
+                        let start_pos = transaction_id_part + "\"transactionId\":".len();
+                        // Extract the substring from start position to the next non-digit character
+                        let mut id_str = heapless::String::<32>::new();
+                        for c in message_str[start_pos..]
+                            .chars()
+                            .skip_while(|c| !c.is_ascii_digit()) // Skip any whitespace before number
+                            .take_while(|c| c.is_ascii_digit())
+                        // Take only digits
+                        {
+                            let _ = id_str.push(c);
                         }
+
+                        // Parse the extracted string to an integer
+                        if let Ok(id) = id_str.parse::<i32>() {
+                            info!("OCPP: Extracted transaction ID: {id} from response");
+
+                            // Use a timeout to prevent deadlock if the mutex is held too long
+                            match embassy_time::with_timeout(
+                                Duration::from_millis(500),
+                                charger.set_transaction_id(id),
+                            )
+                            .await
+                            {
+                                Ok(_) => info!("OCPP: Successfully set transaction ID to {id}"),
+                                Err(_) => warn!("OCPP: Timeout while trying to set transaction ID"),
+                            }
+                        } else {
+                            warn!("OCPP: Failed to parse transaction ID from: {id_str}");
+                        }
+                    } else {
+                        warn!(
+                            "OCPP: Could not find transactionId field in response: {message_str}"
+                        );
                     }
                 } else if message_str.contains("StopTransaction") {
                     info!("OCPP: Received StopTransaction message");
@@ -383,7 +441,11 @@ pub async fn response_handler_task(charger: &'static Charger) {
         }
         if new_input_event != InputEvent::None {
             info!("OCPP: Sending input event to state machine: {new_input_event:?}");
-            charger::STATE_IN_CHANNEL.send(new_input_event).await;
+            // Use try_send to avoid blocking indefinitely if the channel is full
+            match charger::STATE_IN_CHANNEL.try_send(new_input_event) {
+                Ok(_) => info!("OCPP: Successfully sent event to state machine"),
+                Err(_) => warn!("OCPP: Failed to send event to state machine, channel full"),
+            }
         }
     }
 }

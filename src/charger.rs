@@ -121,12 +121,14 @@ impl Charger {
     pub async fn get_transaction_id(&self) -> i32 {
         let transaction_id_guard = self.transaction_id.lock().await;
         let id = *transaction_id_guard.borrow();
+        info!("Charger: Retrieved transaction ID: {id}");
         id
     }
 
     pub async fn set_transaction_id(&self, new_id: i32) {
         let transaction_id_guard = self.transaction_id.lock().await;
         *transaction_id_guard.borrow_mut() = new_id;
+        info!("Charger: Set transaction ID to: {new_id}");
     }
 
     pub async fn transition(

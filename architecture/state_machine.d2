@@ -21,7 +21,7 @@ Transitions: |rust
       (Authorizing, Rejected)  => (Occupied, []),
       (Charging, SwipeCard)    => (Occupied, [Unlock, RemovePower]),
       (Occupied, RemoveCable)  => (Available, []),
-      (Faulted, Reset)         => (Available, []),
+      (Faulted, Reset)         => (Available, [Unlock, RemovePower]),
       _                        => (Faulted, [Unlock, RemovePower]), // Faults when no valid transition
     }
   }
