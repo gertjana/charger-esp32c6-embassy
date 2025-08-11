@@ -141,10 +141,14 @@ impl NetworkStack {
         let mut socket = TcpSocket::new(*self.stack, rx_buffer, tx_buffer);
         let remote_endpoint = (address, self.app_config.mqtt_port);
 
-        socket
-            .connect(remote_endpoint)
-            .await
-            .map_err(|_| ReasonCode::NetworkError)?;
+        // Use a timeout for the socket connection to prevent indefinite blocking
+        if let Err(_e) = embassy_time::with_timeout(
+            Duration::from_secs(10),
+            socket.connect(remote_endpoint)
+        ).await {
+            warn!("MQTT: Timeout connecting to broker");
+            return Err(ReasonCode::NetworkError);
+        }
 
         let config = self.create_mqtt_config();
         let mut client = MqttClient::<_, 5, _>::new(
@@ -156,11 +160,23 @@ impl NetworkStack {
             config,
         );
 
-        client.connect_to_broker().await?;
+        // Use a timeout for connecting to the broker
+        if let Err(_e) = embassy_time::with_timeout(
+            Duration::from_secs(10),
+            client.connect_to_broker()
+        ).await {
+            warn!("MQTT: Timeout during broker connection handshake");
+            return Err(ReasonCode::NetworkError);
+        }
 
-        client
-            .subscribe_to_topic(&self.app_config.system_topic())
-            .await?;
+        // Use a timeout for subscribing to the topic
+        if let Err(_e) = embassy_time::with_timeout(
+            Duration::from_secs(10),
+            client.subscribe_to_topic(&self.app_config.system_topic())
+        ).await {
+            warn!("MQTT: Timeout subscribing to topic");
+            return Err(ReasonCode::NetworkError);
+        }
 
         Ok(client)
     }

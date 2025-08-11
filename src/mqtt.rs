@@ -22,15 +22,25 @@ pub async fn mqtt_client_task(
     info!("Task started: MQTT Client (Send/Receive)");
 
     loop {
-        match network.receive_message_with_client(client).await {
-            Ok(Some(message)) => {
-                MQTT_RECEIVE_CHANNEL.send(message).await;
+        // Use a timeout to prevent blocking indefinitely
+        match embassy_time::with_timeout(
+            Duration::from_millis(100),
+            network.receive_message_with_client(client)
+        ).await {
+            Ok(Ok(Some(message))) => {
+                // Use try_send to avoid blocking if the receive channel is full
+                if MQTT_RECEIVE_CHANNEL.try_send(message).is_err() {
+                    warn!("MQTT: Receive channel is full, dropping message");
+                }
             }
-            Ok(None) => {
-                // No message received, continue to check for outgoing messages
+            Ok(Ok(None)) => {
+                // No message received, continue
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 warn!("Failed to receive MQTT message: {e:?}");
+            }
+            Err(_) => {
+                // Timeout occurred, this is normal when no messages are available
             }
         }
 

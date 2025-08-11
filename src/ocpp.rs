@@ -196,20 +196,23 @@ pub async fn status_notification_task(charger: &'static Charger) {
                 ocpp::status_notification(&ocpp::next_ocpp_message_id(), current_state);
             let message = parse::serialize_message(&status_notification).unwrap();
 
-            match mqtt::MQTT_SEND_CHANNEL
-                .try_send(heapless::Vec::from_slice(message.as_bytes()).unwrap())
-            {
-                Ok(()) => {
-                    info!(
-                        "Status Notification: Sent OCPP status notification for state: {}",
-                        current_state.as_str()
-                    );
-                }
-                Err(_) => {
-                    warn!("Status Notification: Failed to send notification, MQTT queue full");
+            if current_state != ChargerState::Authorizing {
+                match mqtt::MQTT_SEND_CHANNEL
+                    .try_send(heapless::Vec::from_slice(message.as_bytes()).unwrap())
+                {
+                    Ok(()) => {
+                        info!(
+                            "Status Notification: Sent OCPP status notification for state: {}",
+                            current_state.as_str()
+                        );
+                    }
+                    Err(_) => {
+                        warn!("Status Notification: Failed to send notification, MQTT queue full");
+                    }
                 }
             }
         }
+        Timer::after(Duration::from_millis(100)).await; // Avoid busy loop
     }
 }
 
@@ -297,37 +300,24 @@ pub async fn transaction_handler_task(charger: &'static Charger) {
                     }
                 }
                 ChargerState::Occupied if output_events.contains(&OutputEvent::RemovePower) => {
-                    // Get the transaction ID and validate it
-                    let transaction_id = charger.get_transaction_id().await;
-
-                    if transaction_id <= 0 {
-                        warn!("Transaction Handler: Invalid transaction ID: {transaction_id}, cannot send StopTransaction");
-                    } else {
-                        info!("Transaction Handler: Sending StopTransaction with ID: {transaction_id}");
-                        let message = parse::serialize_message(&stop_transaction(
-                            &next_ocpp_message_id(),
-                            transaction_id,
-                            "123456",
-                        ))
-                        .unwrap();
-
-                        let mut msg_vec = heapless::Vec::new();
-                        if msg_vec.extend_from_slice(message.as_bytes()).is_ok() {
-                            match mqtt::MQTT_SEND_CHANNEL.try_send(msg_vec) {
-                                Ok(()) => {
-                                    info!("Transaction Handler: Successfully sent StopTransaction message");
-                                    // Reset transaction ID after successfully sending stop message
-                                    charger.set_transaction_id(0).await;
-                                }
-                                Err(_) => {
-                                    warn!("Transaction Handler: Failed to send StopTransaction message, MQTT queue full");
-                                }
+                    let message = parse::serialize_message(&stop_transaction(
+                        &next_ocpp_message_id(),
+                        charger.get_transaction_id().await,
+                        "123456",
+                    ))
+                    .unwrap(); // TODO: Get transaction ID from state.
+                    let mut msg_vec = heapless::Vec::new();
+                    if msg_vec.extend_from_slice(message.as_bytes()).is_ok() {
+                        match mqtt::MQTT_SEND_CHANNEL.try_send(msg_vec) {
+                            Ok(()) => {
+                                info!("Transaction Handler: Successfully sent StopTransaction message");
                             }
-                        } else {
-                            warn!(
-                                "Transaction Handler: StopTransaction message too large for queue"
-                            );
+                            Err(_) => {
+                                warn!("Transaction Handler: Failed to send StopTransaction message, MQTT queue full");
+                            }
                         }
+                    } else {
+                        warn!("Transaction Handler: StopTransaction message too large for queue");
                     }
                 }
                 _ => {
@@ -337,6 +327,7 @@ pub async fn transaction_handler_task(charger: &'static Charger) {
         }
     }
 }
+
 
 /// Task to handle incoming OCPP responses from MQTT
 /// The OCPP library just have proper support for CallResult and CallError

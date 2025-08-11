@@ -10,12 +10,13 @@ classes: {
     style: {
       fill: lightgreen
     }
-    height: 120
+    # height: 120
   } 
   network_task: {
     style: {
       fill: lightgreen
     }
+    height: 100
   } 
   channel: {
     style: {
@@ -27,19 +28,17 @@ classes: {
     style: {
       fill: yellow
     }
-    height: 150
+    # height: 150
   }
   ocpp: {
     style: {fill: lightblue}
+    height: 100
   }
   network: {
     # width: 550
   }
   app: {
     style: {fill: "#ddddee"}
-  }
-  fsm: {
-    style: {fill: "#6699cc"}
   }
   legend: {
     style: {
@@ -59,23 +58,21 @@ classes: {
   placeholder: {
     label: ""
     style: {
-      fill: "#6699cc"
-      stroke: "#6699cc"
+      fill: "#ddddee"
+      stroke: "#ddddee"
     }
-    width: 120
-    height: 60
   }
   state-box: {
     width: 120
-    height: 60
+    height: 40
   }
   states: {
     grid-columns: 1
     grid-gap: 5
-    height: 400
+    height: 300
     style: {
-      fill: "#6699cc"
-      stroke: "#6699cc"
+      fill: "#eef0fd"
+      stroke: "#eef0fd"
     }    
   }
   code: {
@@ -87,51 +84,47 @@ classes: {
 
 Main.class: app
 Main: Application Clients, Tasks and Channels {
-  grid-columns: 3
-  Charger States.class: fsm
+  grid-columns: 4
+  # Charger States.class: fsm
   Charger States: {
     grid-columns: 3
     grid-rows: 1
     InputEvents.class: states
     InputEvents {
-      InsertCable
-      RemoveCable
-      SwipeDetected
-      Accepted
-      Rejected
+      InsertCable.class: state-box
+      RemoveCable.class: state-box
+      SwipeDetected.class: state-box
+      Accepted.class: state-box
+      Rejected.class: state-box
     }
     States.class: states
     States {
-      available.class: state-bo
+      available.class: state-box
       available: {style: {fill: lightgreen}}
+      occupied.class: state-box
       occupied: {width: 120; style: {fill: lightyellow}}
+      authorizing.class: state-box
       authorizing: {width: 120; style: {fill: orange}}
       charging.class: state-box
       charging: {style: {fill: lightblue}}
       faulted.class: state-box
       faulted: {style: {fill: pink}}
-      off.class: state-box
-      off: {style: {fill: lightgrey}}
+      # off.class: state-box
+      # off: {style: {fill: lightgrey}}
     }
     OutputEvents.class: states
     OutputEvents {
-      Lock
-      Unlock
-      ApplyPower
-      RemovePower
-      ShowRejected
+      Lock.class: state-box
+      Unlock.class: state-box
+      ApplyPower.class: state-box
+      RemovePower.class: state-box
+      ShowRejected.class: state-box
     }
   }
-  State Machine Handler.class: task
-  State Machine Handler.box: |md
-    - handles state transitions based on input events
-    - uses a finite state machine to manage charger states
-    - communicates state changes via State Out Channel
-  |
   Network.class: network
   Network: {
     grid-columns: 1
-    grid-gap: 45
+    grid-gap: 20
     Wifi Connection.class: network_task
     Wifi Connection.box: |md
       Handles opening and reconnecting the wifi connection
@@ -150,7 +143,42 @@ Main: Application Clients, Tasks and Channels {
   NTP Sync.box: |md
     periodically syncs time with NTP Server
   |
-    ESP32-C6: {
+  State Machine Handler.class: task
+  State Machine Handler.box: |md
+    - handles state transitions based on input events
+    - uses a finite state machine to manage charger states
+    - communicates state changes via State Out Channel
+  |
+  placeholder1.class: placeholder
+  placeholder1: {
+    height: 50
+  }
+  Authorization Handler.class: ocpp
+  Authorization Handler.box: |md
+    - sends Authorize Request to OCPP Server
+  |
+  Statusnotification Handler.class: ocpp
+  Statusnotification Handler.box: |md
+    Sends status notification on charger state changes
+  |
+  Transaction Handler.class: ocpp
+  Transaction Handler.box: |md
+    - handles OCPP transactions
+    - StartTransaction/StopTransaction
+  |
+  Bootnotification Handler.class: ocpp
+  Bootnotification Handler.box: |md
+    Sends BootNotification Request on startup
+  |
+  HeartBeat Handler.class: ocpp
+  HeartBeat Handler.box: |md
+    Periodically sends Heartbeat Request
+  |
+  OCPP Response Handler.class: ocpp
+  OCPP Response Handler.box: |md
+    receives and handles ocpp Responses
+  |
+  ESP32-C6: {
     shape: image
     label: "XIAO ESP32-C6"
     icon: "./images/esp32-c6.png"
@@ -158,6 +186,7 @@ Main: Application Clients, Tasks and Channels {
       fill: "#6699cc"
       stroke: "#6699cc"
     }
+    height: 200
   }
   State PubSub Channel.class: channel
   State PubSub Channel.box: |md
@@ -168,22 +197,22 @@ Main: Application Clients, Tasks and Channels {
   State In Channel.box: |md
     - Threadsafe channel to send events that changes state
   |
-  OCPP Response Handler.class: ocpp
-  OCPP Response Handler.box: |md
-    receives and handles ocpp Responses
-  |
-  OCPP Receive Channel.class: channel
-  OCPP Receive Channel.box: |md
-    Threadsafe channel to handle incoming messages
+  placeholder2.class: placeholder
+  placeholder2: {
+    height: 50
+  }
+  OCPP Send Channel.class: channel
+  OCPP Send Channel.box: |md
+    Threadsafe channel to handle outgoing messages
   |
   MQTT Client.class: client
   MQTT Client.box: |md
     - handles communication with an MQTT Broker
     - TODO: Secure connection with TLS
   |
-  OCPP Send Channel.class: channel
-  OCPP Send Channel.box: |md
-    Threadsafe channel to handle outgoing messages
+  OCPP Receive Channel.class: channel
+  OCPP Receive Channel.box: |md
+    Threadsafe channel to handle incoming messages
   |
   Hardware: {
     grid-columns: 2
@@ -256,27 +285,6 @@ Main: Application Clients, Tasks and Channels {
       height: 100
     }
   }
-  Transaction Handler.class: ocpp
-  Transaction Handler.box: |md
-    - handles OCPP transactions
-    - StartTransaction/StopTransaction
-  |
-  Authorization Handler.class: ocpp
-  Authorization Handler.box: |md
-    - sends Authorize Request to OCPP Server
-  |
-  Statusnotification Handler.class: ocpp
-  Statusnotification Handler.box: |md
-    Sends status notification on charger state changes
-  |
-  Bootnotification Handler.class: ocpp
-  Bootnotification Handler.box: |md
-    Sends BootNotification Request on startup
-  |
-  HeartBeat Handler.class: ocpp
-  HeartBeat Handler.box: |md
-    Periodically sends Heartbeat Request
-  |
   Charger States.InputEvents -> Charger States.States: {
     style: {
       stroke: "white"
@@ -298,7 +306,7 @@ Main: Application Clients, Tasks and Channels {
   Hardware.Cable -> Hardware.Cable Detection Handler -> State In Channel
   Hardware.Display Handler -> Hardware.Display
   OCPP Receive Channel -> OCPP Response Handler -> State In Channel
-  OCPP Response Handler -> Transaction Handler -> OCPP Send Channel
+  State PubSub Channel -> Transaction Handler -> OCPP Send Channel
   NTP Sync -> NTP CLient
   OCPP Send Channel -> MQTT Client -> OCPP Receive Channel
   HeartBeat Handler -> OCPP Send Channel
@@ -306,8 +314,6 @@ Main: Application Clients, Tasks and Channels {
   State Machine Handler <-> Charger States
   State PubSub Channel -> Statusnotification Handler -> OCPP Send Channel
   State PubSub Channel -> Authorization Handler -> OCPP Send Channel
-  NTP Client <-> Network
-  MQTT Client <-> Network
 }
 
 Legend.class: legend

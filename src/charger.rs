@@ -12,7 +12,7 @@ pub static DEFAULT_CONNECTOR_ID: u32 = 0;
 pub static STATE_PUBSUB: PubSubChannel<
     CriticalSectionRawMutex,
     (ChargerState, heapless::Vec<OutputEvent, 2>),
-    8,
+    10,
     6,
     4,
 > = PubSubChannel::new();
