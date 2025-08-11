@@ -18,6 +18,11 @@ client_id = "esp32c6-charger-001"
 
 [ntp]
 server = "pool.ntp.org"
+sync_interval_minutes = 240
 
 [display]
 timezone_offset_hours = 0
+
+[ocpp]
+heartbeat_interval = 30
+id_tag = "123456"
