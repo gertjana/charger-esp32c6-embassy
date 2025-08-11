@@ -25,8 +25,10 @@ pub async fn mqtt_client_task(
         // Use a timeout to prevent blocking indefinitely
         match embassy_time::with_timeout(
             Duration::from_millis(100),
-            network.receive_message_with_client(client)
-        ).await {
+            network.receive_message_with_client(client),
+        )
+        .await
+        {
             Ok(Ok(Some(message))) => {
                 // Use try_send to avoid blocking if the receive channel is full
                 if MQTT_RECEIVE_CHANNEL.try_send(message).is_err() {

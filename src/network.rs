@@ -142,10 +142,10 @@ impl NetworkStack {
         let remote_endpoint = (address, self.app_config.mqtt_port);
 
         // Use a timeout for the socket connection to prevent indefinite blocking
-        if let Err(_e) = embassy_time::with_timeout(
-            Duration::from_secs(10),
-            socket.connect(remote_endpoint)
-        ).await {
+        if let Err(_e) =
+            embassy_time::with_timeout(Duration::from_secs(10), socket.connect(remote_endpoint))
+                .await
+        {
             warn!("MQTT: Timeout connecting to broker");
             return Err(ReasonCode::NetworkError);
         }
@@ -161,10 +161,9 @@ impl NetworkStack {
         );
 
         // Use a timeout for connecting to the broker
-        if let Err(_e) = embassy_time::with_timeout(
-            Duration::from_secs(10),
-            client.connect_to_broker()
-        ).await {
+        if let Err(_e) =
+            embassy_time::with_timeout(Duration::from_secs(10), client.connect_to_broker()).await
+        {
             warn!("MQTT: Timeout during broker connection handshake");
             return Err(ReasonCode::NetworkError);
         }
@@ -172,8 +171,10 @@ impl NetworkStack {
         // Use a timeout for subscribing to the topic
         if let Err(_e) = embassy_time::with_timeout(
             Duration::from_secs(10),
-            client.subscribe_to_topic(&self.app_config.system_topic())
-        ).await {
+            client.subscribe_to_topic(&self.app_config.system_topic()),
+        )
+        .await
+        {
             warn!("MQTT: Timeout subscribing to topic");
             return Err(ReasonCode::NetworkError);
         }

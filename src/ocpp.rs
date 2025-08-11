@@ -328,7 +328,6 @@ pub async fn transaction_handler_task(charger: &'static Charger) {
     }
 }
 
-
 /// Task to handle incoming OCPP responses from MQTT
 /// The OCPP library just have proper support for CallResult and CallError
 /// so for now we just parse the messages as strings and use string matching
