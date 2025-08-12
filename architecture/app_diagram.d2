@@ -42,10 +42,10 @@ classes: {
     style: {fill: "#ddddee"}
   }
   legend: {
-    # style: {
-    #   stroke: "#ddddee"
-    #   fill: "#ddddee"
-    # }
+    style: {
+      stroke: "#ddddee"
+      fill: "#ddddee"
+    }
   }
   charger: {
     label: ""
@@ -63,9 +63,31 @@ classes: {
       stroke: "#ddddee"
     }
   }
+  placeholder-nested: {
+    label: ""
+    style: {
+      fill: "#eef0fd"
+      stroke: "#eef0fd"
+    }
+    # height: 20
+  }
   state-box: {
     width: 120
     height: 40
+  }
+  state-box-input: {
+    width: 120
+    height: 40
+    style: {
+      fill: "#d2dbfd"
+    }
+  }
+  state-box-output: {
+    width: 120
+    height: 40
+    style: {
+      fill: "#c3f0ff"
+    }
   }
   states: {
     grid-columns: 1
@@ -91,11 +113,11 @@ Main: Application Clients, Tasks and Channels {
     grid-rows: 1
     InputEvents.class: states
     InputEvents {
-      InsertCable.class: state-box
-      RemoveCable.class: state-box
-      SwipeDetected.class: state-box
-      Accepted.class: state-box
-      Rejected.class: state-box
+      InsertCable.class: state-box-input
+      RemoveCable.class: state-box-input
+      SwipeDetected.class: state-box-input
+      Accepted.class: state-box-input
+      Rejected.class: state-box-input
     }
     States.class: states
     States {
@@ -112,11 +134,11 @@ Main: Application Clients, Tasks and Channels {
     }
     OutputEvents.class: states
     OutputEvents {
-      Lock.class: state-box
-      Unlock.class: state-box
-      ApplyPower.class: state-box
-      RemovePower.class: state-box
-      ShowRejected.class: state-box
+      Lock.class: state-box-output
+      Unlock.class: state-box-output
+      ApplyPower.class: state-box-output
+      RemovePower.class: state-box-output
+      ShowRejected.class: state-box-output
     }
   }
   Network.class: network
@@ -183,7 +205,7 @@ Main: Application Clients, Tasks and Channels {
   |
   OCPP Response Handler.class: ocpp
   OCPP Response Handler.box: |md
-    - receives and handles ocpp Responses
+    - receives and handles ocpp responses
     - Also updates transaction id
   |
   ESP32-C6: {
@@ -198,12 +220,14 @@ Main: Application Clients, Tasks and Channels {
   }
   State PubSub Channel.class: channel
   State PubSub Channel.box: |md
-     - Threadsafe pubsub channel for propagating state changes
-     - other tasks (currently 6) subscribe to state changes
+     - Threadsafe pubsub channel
+     - propagates state changes
+     - other tasks subscribe to state changes
   |
   State In Channel.class: channel
   State In Channel.box: |md
-    - Threadsafe channel to send events that changes state
+    - Threadsafe channel
+    - send events that change state
   |
   placeholder2.class: placeholder
   placeholder2: {
@@ -211,7 +235,8 @@ Main: Application Clients, Tasks and Channels {
   }
   OCPP Send Channel.class: channel
   OCPP Send Channel.box: |md
-    Threadsafe channel to handle outgoing messages
+    - Threadsafe channel
+    - Handles outgoing messages
   |
   MQTT Client.class: client
   MQTT Client.box: |md
@@ -220,36 +245,73 @@ Main: Application Clients, Tasks and Channels {
   |
   OCPP Receive Channel.class: channel
   OCPP Receive Channel.box: |md
-    Threadsafe channel to handle incoming messages
+    - Threadsafe channel
+    - handles incoming messages
   |
   Hardware: {
     grid-columns: 2
-    grid-rows: 6
+    grid-rows: 7
     Lock Handler.class: task
+    Lock Handler {
+      grid-columns: 2
+      grid-gap: 20
+      Lock2.class: state-box-output
+      Lock2: { label: "Lock" }
+      Unlock2.class: state-box-output
+      Unlock2: {label: "Unlock"}
+    }
     Lock Handler.box: |md
       - controls the lock mechanism
       - GPIO21 (going to a solenoid lock)
     |
     Led Handler.class: task
+    Led Handler {
+      grid-columns: 2
+      grid-gap: 20
+      state.class: state-box
+    }
     Led Handler.box: |md
       - controls multicolor led
-      - GPIO15 (going to RGB LED)
+      - I2C (GPIO22-23) for now onboard LED GPIO15
     |
     Relais Handler.class: task
+    Relais Handler {
+      grid-columns: 2
+      grid-gap: 20
+      ApplyPower2.class: state-box-output
+      ApplyPower2: { label: "RemovePower"}
+      RemovePower2.class: state-box-output
+      RemovePower2: { label: "RemovePower"}
+    }
     Relais Handler.box: |md
       - controls the relais
       - GPIO2
     |
     Swipe Handler.class: task
+    Swipe Handler {
+      grid-columns: 2
+      grid-gap: 20
+      SwipeDetected2.class: state-box-input
+      SwipeDetected2: { label: "SwipeDetected"}
+    }
     Swipe Handler.box: |md
       - Monitors rfid card swipes
-      - GPIO1 (going to be SPI GPIO17-20) 
+      - SPI GPIO17-20) (for now GPIO1)
     |
     Cable Detection Handler.class: task
+    Cable Detection Handler {
+      grid-columns: 2
+      grid-gap: 20
+      InsertCable2.class: state-box-input
+      InsertCable2: { label: "InsertCable"}
+      RemoveCable2.class: state-box-input
+      RemoveCable2: { label: "RemoveCable"}
+    }
     Cable Detection Handler.box: |md
       - Monitors cable connection status
       - GPIO0
     |
+    placeholder3.class: placeholder-nested
     Display Handler.class: task
     Display Handler.box: |md
       - Display Charger State and Network info
@@ -286,6 +348,7 @@ Main: Application Clients, Tasks and Channels {
       shape: image
       height: 100
     }
+    placeholder4.class: placeholder-nested
     Display {
       label: ""
       icon: "./images/display-frame.png"
