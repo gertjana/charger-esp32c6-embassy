@@ -368,25 +368,26 @@ pub async fn response_handler_task(charger: &'static Charger) {
 
         // Simple string parsing: [call_result_id, "message_type", {payload}]
         if message_str.starts_with('[') && message_str.ends_with(']') {
-            let inner = &message_str[1..message_str.len()-1]; // Remove brackets
-            
+            let inner = &message_str[1..message_str.len() - 1]; // Remove brackets
+
             // Split into 3 parts: call_result_id, message_type, payload
             let parts: heapless::Vec<&str, 3> = inner.splitn(3, ',').collect();
-            
+
             if parts.len() == 3 {
                 // Parse call_result_id
                 if let Ok(call_result_id) = parts[0].parse::<u8>() {
-                    if call_result_id == 3 { // CallResult
+                    if call_result_id == 3 {
+                        // CallResult
                         // Extract message_type (remove quotes)
                         let message_type = parts[1].trim().trim_matches('"');
                         let payload = parts[2]; // JSON payload as string
-                        
+
                         info!("OCPP: CallResult - Type: {message_type}");
-                        
+
                         match message_type {
                             "Authorize" => {
                                 info!("OCPP: Received Authorize response");
-                                
+
                                 // Extract status from payload
                                 if let Some(status_start) = payload.find("\"status\":\"") {
                                     let status_pos = status_start + 10; // Skip past "status":"
@@ -404,15 +405,17 @@ pub async fn response_handler_task(charger: &'static Charger) {
                             }
                             "StartTransaction" => {
                                 info!("OCPP: Received StartTransaction response");
-                                
+
                                 // Extract transaction_id from payload
                                 if let Some(tx_start) = payload.find("\"transactionId\":") {
                                     let tx_pos = tx_start + 16; // Skip past "transactionId":
                                     if let Some(tx_end) = payload[tx_pos..].find(&[',', '}'][..]) {
                                         let tx_id_str = &payload[tx_pos..tx_pos + tx_end];
                                         if let Ok(transaction_id) = tx_id_str.parse::<i32>() {
-                                            info!("OCPP: Extracted transaction ID: {transaction_id}");
-                                            
+                                            info!(
+                                                "OCPP: Extracted transaction ID: {transaction_id}"
+                                            );
+
                                             match embassy_time::with_timeout(
                                                 Duration::from_millis(500),
                                                 charger.set_transaction_id(transaction_id),
@@ -423,7 +426,7 @@ pub async fn response_handler_task(charger: &'static Charger) {
                                         }
                                     }
                                 }
-                                
+
                                 // Extract status from payload
                                 if let Some(status_start) = payload.find("\"status\":\"") {
                                     let status_pos = status_start + 10; // Skip past "status":"
