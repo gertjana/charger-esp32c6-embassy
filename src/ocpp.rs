@@ -335,6 +335,7 @@ pub async fn transaction_handler_task(charger: &'static Charger) {
 /// so for now we just parse the messages as strings and use string matching
 /// to determine the type of message received
 /// This is a temporary solution until we have a proper OCPP response handler
+/// /// [3,"StartTransaction",{"transactionId":43,"idTagInfo":{"status":"Accepted"}}]
 #[embassy_executor::task]
 pub async fn response_handler_task(charger: &'static Charger) {
     info!("Task started: OCPP Response Handler");
@@ -355,82 +356,109 @@ pub async fn response_handler_task(charger: &'static Charger) {
             }
         };
         let mut new_input_event: InputEvent = InputEvent::None;
-        match from_utf8(&message) {
-            Ok(message_str) => {
-                //TODO Parse the message as an CallResult or CallError
-                if message_str.contains("Heartbeat") {
-                    info!("OCPP: Received Heartbeat response");
-                } else if message_str.contains("BootNotification") {
-                    info!("OCPP: Received BootNotification response");
-                } else if message_str.contains("Authorize") {
-                    if message_str.contains("Accepted") {
-                        new_input_event = InputEvent::Accepted;
-                    } else {
-                        new_input_event = InputEvent::Rejected;
-                    }
-                    info!("OCPP: Received Authorize message");
-                } else if message_str.contains("StartTransaction") {
-                    info!("OCPP: Received StartTransaction message: {message_str}");
-                    // Extract transaction ID from the message using a more robust approach
-                    // Looking for the transactionId field in the JSON response
-                    if let Some(transaction_id_part) = message_str.find("\"transactionId\":") {
-                        // Find the start position of the number after "transactionId":
-                        let start_pos = transaction_id_part + "\"transactionId\":".len();
-                        // Extract the substring from start position to the next non-digit character
-                        let mut id_str = heapless::String::<32>::new();
-                        for c in message_str[start_pos..]
-                            .chars()
-                            .skip_while(|c| !c.is_ascii_digit()) // Skip any whitespace before number
-                            .take_while(|c| c.is_ascii_digit())
-                        // Take only digits
-                        {
-                            let _ = id_str.push(c);
-                        }
 
-                        // Parse the extracted string to an integer
-                        if let Ok(id) = id_str.parse::<i32>() {
-                            info!("OCPP: Extracted transaction ID: {id} from response");
-
-                            // Use a timeout to prevent deadlock if the mutex is held too long
-                            match embassy_time::with_timeout(
-                                Duration::from_millis(500),
-                                charger.set_transaction_id(id),
-                            )
-                            .await
-                            {
-                                Ok(_) => info!("OCPP: Successfully set transaction ID to {id}"),
-                                Err(_) => warn!("OCPP: Timeout while trying to set transaction ID"),
-                            }
-                        } else {
-                            warn!("OCPP: Failed to parse transaction ID from: {id_str}");
-                        }
-                    } else {
-                        warn!(
-                            "OCPP: Could not find transactionId field in response: {message_str}"
-                        );
-                    }
-                } else if message_str.contains("StopTransaction") {
-                    info!("OCPP: Received StopTransaction message");
-                } else if message_str.contains("RemoteStartTransaction") {
-                    info!("OCPP: Received RemoteStartTransaction command");
-                } else if message_str.contains("RemoteStopTransaction") {
-                    info!("OCPP: Received RemoteStopTransaction command");
-                } else if message_str.contains("StatusNotification") {
-                    info!("OCPP: Received StatusNotification message");
-                } else if message_str.contains("MeterValues") {
-                    info!("OCPP: Received MeterValues message");
-                } else if message_str.starts_with('[') && message_str.contains(',') {
-                    // Looks like an OCPP message but unknown type
-                    info!("OCPP: Received unknown message type: {message_str}");
-                } else {
-                    // Non-OCPP message
-                    info!("MQTT: Non-OCPP message received: {message_str}");
-                }
-            }
+        // Convert message bytes to string for parsing
+        let message_str = match from_utf8(&message) {
+            Ok(s) => s,
             Err(_) => {
-                warn!("MQTT: Received non-UTF8 message, length: {}", message.len());
+                warn!("OCPP: Received invalid UTF-8 message");
+                continue;
             }
+        };
+
+        // Simple string parsing: [call_result_id, "message_type", {payload}]
+        if message_str.starts_with('[') && message_str.ends_with(']') {
+            let inner = &message_str[1..message_str.len()-1]; // Remove brackets
+            
+            // Split into 3 parts: call_result_id, message_type, payload
+            let parts: heapless::Vec<&str, 3> = inner.splitn(3, ',').collect();
+            
+            if parts.len() == 3 {
+                // Parse call_result_id
+                if let Ok(call_result_id) = parts[0].parse::<u8>() {
+                    if call_result_id == 3 { // CallResult
+                        // Extract message_type (remove quotes)
+                        let message_type = parts[1].trim().trim_matches('"');
+                        let payload = parts[2]; // JSON payload as string
+                        
+                        info!("OCPP: CallResult - Type: {message_type}");
+                        
+                        match message_type {
+                            "Authorize" => {
+                                info!("OCPP: Received Authorize response");
+                                
+                                // Extract status from payload
+                                if let Some(status_start) = payload.find("\"status\":\"") {
+                                    let status_pos = status_start + 10; // Skip past "status":"
+                                    if let Some(status_end) = payload[status_pos..].find('"') {
+                                        let status = &payload[status_pos..status_pos + status_end];
+                                        if status == "Accepted" {
+                                            new_input_event = InputEvent::Accepted;
+                                            info!("OCPP: Authorization accepted");
+                                        } else {
+                                            new_input_event = InputEvent::Rejected;
+                                            info!("OCPP: Authorization rejected with status: {status}");
+                                        }
+                                    }
+                                }
+                            }
+                            "StartTransaction" => {
+                                info!("OCPP: Received StartTransaction response");
+                                
+                                // Extract transaction_id from payload
+                                if let Some(tx_start) = payload.find("\"transactionId\":") {
+                                    let tx_pos = tx_start + 16; // Skip past "transactionId":
+                                    if let Some(tx_end) = payload[tx_pos..].find(&[',', '}'][..]) {
+                                        let tx_id_str = &payload[tx_pos..tx_pos + tx_end];
+                                        if let Ok(transaction_id) = tx_id_str.parse::<i32>() {
+                                            info!("OCPP: Extracted transaction ID: {transaction_id}");
+                                            
+                                            match embassy_time::with_timeout(
+                                                Duration::from_millis(500),
+                                                charger.set_transaction_id(transaction_id),
+                                            ).await {
+                                                Ok(_) => info!("OCPP: Successfully set transaction ID to {transaction_id}"),
+                                                Err(_) => warn!("OCPP: Timeout setting transaction ID"),
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                // Extract status from payload
+                                if let Some(status_start) = payload.find("\"status\":\"") {
+                                    let status_pos = status_start + 10; // Skip past "status":"
+                                    if let Some(status_end) = payload[status_pos..].find('"') {
+                                        let status = &payload[status_pos..status_pos + status_end];
+                                        if status == "Accepted" {
+                                            info!("OCPP: StartTransaction accepted");
+                                        } else {
+                                            warn!("OCPP: StartTransaction rejected with status: {status}");
+                                        }
+                                    }
+                                }
+                            }
+                            "Heartbeat" => {
+                                info!("OCPP: Received Heartbeat response");
+                            }
+                            "BootNotification" => {
+                                info!("OCPP: Received BootNotification response");
+                            }
+                            _ => {
+                                info!("OCPP: Received other response type: {message_type}");
+                            }
+                        }
+                    } else {
+                        info!("OCPP: Non-CallResult message type: {call_result_id}");
+                    }
+                }
+            } else {
+                warn!("OCPP: Invalid message format: {message_str}");
+            }
+        } else {
+            info!("MQTT: Non-OCPP message: {message_str}");
         }
+
+        // Send the input event to the state machine if we have one
         if new_input_event != InputEvent::None {
             info!("OCPP: Sending input event to state machine: {new_input_event:?}");
             // Use try_send to avoid blocking indefinitely if the channel is full
