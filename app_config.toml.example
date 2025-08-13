@@ -25,4 +25,3 @@ timezone_offset_hours = 0
 
 [ocpp]
 heartbeat_interval = 30
-id_tag = "123456"

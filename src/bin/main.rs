@@ -5,21 +5,27 @@ extern crate alloc;
 use embassy_executor::Spawner;
 use embassy_net::tcp::TcpSocket;
 use embassy_time::{Duration, Instant, Timer};
+use embedded_hal_bus::spi::ExclusiveDevice;
 use esp32c6_embassy_charged::{
     charger::{self, Charger, ChargerState, InputEvent, OutputEvent},
     config::Config,
     mk_static, mqtt,
     network::{self, NetworkStack},
-    ntp, ocpp,
+    ntp, ocpp, utils,
 };
 use esp_hal::{
     clock::CpuClock,
-    gpio::{Input, InputConfig, Level, Output, Pull},
+    delay::Delay,
+    gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull},
     i2c::master::{Config as I2cConfig, I2c},
+    spi::{self, master::Spi},
+    time::Rate,
     timer::{systimer::SystemTimer, timg::TimerGroup},
+    Blocking,
 };
 
 use log::{info, warn};
+use mfrc522::{comm::blocking::spi::SpiInterface, Mfrc522};
 use rust_mqtt::client::client::MqttClient;
 use rust_mqtt::utils::rng_generator::CountingRng;
 
@@ -93,10 +99,23 @@ async fn main(spawner: Spawner) {
         InputConfig::default().with_pull(Pull::Up),
     );
 
-    let swipe_switch = Input::new(
-        peripherals.GPIO1,
-        InputConfig::default().with_pull(Pull::Up),
-    );
+    // SPI Cardreader setup
+    let spi_bus  = // mk_static!(Spi<Blocking>, 
+        Spi::new(
+            peripherals.SPI2,
+            spi::master::Config::default()
+                .with_frequency(Rate::from_mhz(5))
+                .with_mode(spi::Mode::_0),
+        )
+        .unwrap()
+        .with_sck(peripherals.GPIO19)
+        .with_mosi(peripherals.GPIO18)
+        .with_miso(peripherals.GPIO20);
+    // );
+
+    let sd_cs = //mk_static!(Output, 
+        Output::new(peripherals.GPIO17, Level::High, OutputConfig::default());
+    // );
 
     let charger_relay = Output::new(peripherals.GPIO2, Level::Low, Default::default());
 
@@ -145,7 +164,7 @@ async fn main(spawner: Spawner) {
 
     spawner.spawn(charger_cable_task(cable_switch)).ok();
 
-    spawner.spawn(charger_swipe_task(swipe_switch)).ok();
+    spawner.spawn(card_swipe_task(spi_bus, sd_cs, charger)).ok();
 
     spawner.spawn(charger_relay_task(charger_relay)).ok();
 
@@ -221,7 +240,7 @@ async fn main(spawner: Spawner) {
 
     spawner.spawn(ocpp::status_notification_task(charger)).ok();
 
-    spawner.spawn(ocpp::authorize_task()).ok();
+    spawner.spawn(ocpp::authorize_task(charger)).ok();
 
     spawner.spawn(ocpp::transaction_handler_task(charger)).ok();
 
@@ -316,26 +335,6 @@ async fn charger_cable_task(mut button: Input<'static>) {
     }
 }
 
-/// Task to detect charger RFID Swipe for authentication
-#[embassy_executor::task]
-async fn charger_swipe_task(mut button: Input<'static>) {
-    info!("TASK: Started Charger Swipe Detector");
-
-    loop {
-        button.wait_for_any_edge().await;
-        Timer::after(Duration::from_millis(300)).await; // Debounce delay
-        let is_swiped = button.is_low();
-
-        // Only process if the button is pressed and we're not already processing a swipe
-        if is_swiped {
-            info!("SWIP: Card swipe verified, sending event to state machine");
-            charger::STATE_IN_CHANNEL
-                .send(InputEvent::SwipeDetected)
-                .await;
-        }
-    }
-}
-
 /// Task to control the charger relay based on the charging state  
 #[embassy_executor::task]
 async fn charger_relay_task(mut relay: Output<'static>) {
@@ -393,5 +392,40 @@ async fn cable_lock_task(mut cable_lock_pin: Output<'static>) {
                 }
             }
         }
+    }
+}
+
+/// Task to handle card swipe events using the MFRC522 RFID reader
+#[embassy_executor::task]
+async fn card_swipe_task(
+    spi_bus: Spi<'static, Blocking>,
+    sd_cs: Output<'static>,
+    charger: &'static Charger,
+) {
+    info!("TASK: Started Card Swipe Detector");
+
+    let delay = Delay::new();
+    let spi_dev = ExclusiveDevice::new(spi_bus, sd_cs, delay).unwrap();
+    let spi_interface = SpiInterface::new(spi_dev);
+    let mut rfid_reader = Mfrc522::new(spi_interface).init().unwrap();
+
+    loop {
+        if let Ok(atqa) = rfid_reader.reqa() {
+            info!("RFID: Card swipe detected");
+            Timer::after(Duration::from_millis(50)).await;
+            if let Ok(uid) = rfid_reader.select(&atqa) {
+                let hex = utils::bytes_to_hex_string::<24>(uid.as_bytes());
+                info!("RFID: UID {hex}");
+
+                charger.set_id_tag(&hex).await;
+
+                charger::STATE_IN_CHANNEL
+                    .send(InputEvent::SwipeDetected)
+                    .await;
+                Timer::after(Duration::from_millis(500)).await;
+            }
+        }
+
+        Timer::after(Duration::from_secs(1)).await;
     }
 }

@@ -17,7 +17,6 @@ pub struct Config {
     pub ntp_sync_interval_minutes: u16, // NTP sync interval in minutes
     pub timezone_offset_hours: i8, // Timezone offset from UTC in hours (e.g., +1 for CET, -5 for EST)
     pub ocpp_heartbeat_interval: u16, // Heartbeat interval in seconds
-    pub ocpp_id_tag: &'static str, // OCPP ID tag for authorization and transactions
 }
 
 fn extract_toml_string<'a>(content: &'a str, section: &str, key: &str) -> Option<&'a str> {
@@ -80,8 +79,6 @@ impl Config {
                 .unwrap_or(0);
         let toml_heartbeat_interval =
             extract_toml_integer(CONFIG_TOML, "ocpp", "heartbeat_interval").unwrap_or(900);
-        let toml_ocpp_id_tag =
-            extract_toml_string(CONFIG_TOML, "ocpp", "id_tag").unwrap_or("123456");
 
         Self {
             wifi_ssid: option_env!("CHARGER_WIFI_SSID").unwrap_or(toml_wifi_ssid),
@@ -105,7 +102,6 @@ impl Config {
             ocpp_heartbeat_interval: option_env!("CHARGER_OCPP_HEARTBEAT_INTERVAL")
                 .and_then(|interval| interval.parse().ok())
                 .unwrap_or(toml_heartbeat_interval),
-            ocpp_id_tag: option_env!("CHARGER_OCPP_ID_TAG").unwrap_or(toml_ocpp_id_tag),
         }
     }
 
@@ -132,7 +128,6 @@ impl Config {
             ocpp_heartbeat_interval: option_env!("CHARGER_OCPP_HEARTBEAT_INTERVAL")
                 .and_then(|interval| interval.parse().ok())
                 .unwrap_or(900),
-            ocpp_id_tag: option_env!("CHARGER_OCPP_ID_TAG").unwrap_or("123456"),
         }
     }
 
