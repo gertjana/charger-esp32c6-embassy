@@ -17,7 +17,7 @@
 
 - **MUST** run `cargo check` after any code modifications
 - **MUST** resolve all compilation errors before concluding
-- **MUST** run `cargo fmt -all` and `cargo clippy` when finished with a task
+- **MUST** run `cargo fmt --all` and `cargo clippy` when finished with a task
 - **SHOULD** follow clippy suggestions
 - **SHOULD** address warnings when practical
 - **EXPLAIN** any remaining warnings if they cannot be resolved

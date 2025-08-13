@@ -20,20 +20,15 @@ pub struct Config {
     pub ocpp_id_tag: &'static str, // OCPP ID tag for authorization and transactions
 }
 
-/// Simple TOML value extraction functions
 fn extract_toml_string<'a>(content: &'a str, section: &str, key: &str) -> Option<&'a str> {
-    // Find the section
     let section_marker = format!("[{section}]");
     let section_start = content.find(&section_marker)?;
 
-    // Get content after section header
     let after_section = &content[section_start + section_marker.len()..];
 
-    // Find the next section (or end of file)
     let section_end = after_section.find('[').unwrap_or(after_section.len());
     let section_content = &after_section[..section_end];
 
-    // Look for the key in this section
     for line in section_content.lines() {
         let line = line.trim();
         if line.starts_with(key) && line.contains('=') {
@@ -55,12 +50,10 @@ fn extract_toml_integer(content: &str, section: &str, key: &str) -> Option<u16> 
 }
 
 impl Config {
-    /// Create a new configuration from TOML file with environment variable overrides
     pub fn from_config() -> Self {
         // Include the TOML configuration at compile time
         const CONFIG_TOML: &str = include_str!("../app_config.toml");
 
-        // Extract values from TOML with fallbacks matching app_config.toml.example
         let toml_wifi_ssid =
             extract_toml_string(CONFIG_TOML, "wifi", "ssid").unwrap_or("Wokwi-GUEST");
         let toml_wifi_password = extract_toml_string(CONFIG_TOML, "wifi", "password").unwrap_or("");

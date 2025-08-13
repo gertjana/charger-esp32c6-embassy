@@ -29,12 +29,12 @@ where
 {
     /// Initialize the SSD1306 display
     pub fn new(i2c: I2C) -> Result<Self, &'static str> {
-        info!("Initializing SSD1306 display...");
+        info!("DISP:Initializing SSD1306 display...");
 
         let display_addr = 0x3C;
 
         // Try to initialize with the detected address
-        info!("Trying I2C address 0x{display_addr:02X}...");
+        info!("DISP: Trying I2C address 0x{display_addr:02X}...");
         let interface = I2CDisplayInterface::new_custom_address(i2c, display_addr);
 
         let mut display = Ssd1306::new(interface, DisplaySize128x64, DisplayRotation::Rotate0)
@@ -43,19 +43,19 @@ where
 
         match display.init() {
             Ok(()) => {
-                info!("Display init() completed successfully with address 0x{display_addr:02X}!");
+                info!("DISP: Display init() completed successfully with address 0x{display_addr:02X}!");
             }
             Err(_) => {
-                info!("Failed to initialize display at address 0x{display_addr:02X}");
+                info!("DISP: Failed to initialize display at address 0x{display_addr:02X}");
                 return Err("Failed to initialize display - device responded but init failed");
             }
         }
 
         // Clear the display and flush
         display.flush().map_err(|_| "Failed to flush display")?;
-        info!("Display cleared and flushed successfully");
+        info!("DISP: Display cleared and flushed successfully");
 
-        info!("SSD1306 display initialized successfully");
+        info!("DISP: SSD1306 display initialized successfully");
 
         Ok(DisplayManager { display })
     }

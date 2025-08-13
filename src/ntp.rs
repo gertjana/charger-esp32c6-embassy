@@ -114,7 +114,7 @@ impl NtpPacket {
 /// Task to synchronize time with NTP servers
 #[embassy_executor::task]
 pub async fn ntp_sync_task(network: &'static NetworkStack) {
-    info!("Task started: NTP Time Synchronization");
+    info!("TASK: Started NTP Time Synchronization");
 
     // Wait longer for MQTT to be fully established
     Timer::after(Duration::from_secs(60)).await;
@@ -125,17 +125,17 @@ pub async fn ntp_sync_task(network: &'static NetworkStack) {
         if !is_time_synced() || minutes_since_last_sync() > config.ntp_sync_interval_minutes as u32
         {
             info!(
-                "NTP: Attempting time synchronization with {}",
+                "NTP : Attempting time synchronization with {}",
                 config.ntp_server
             );
 
             match sync_time_with_ntp(network, config.ntp_server).await {
                 Ok(()) => {
-                    info!("NTP: Time synchronized successfully");
-                    info!("NTP: Current time: {}", get_iso8601_time());
+                    info!("NTP : Time synchronized successfully");
+                    info!("NTP : Current time: {}", get_iso8601_time());
                 }
                 Err(e) => {
-                    warn!("NTP: Time synchronization failed: {e}");
+                    warn!("NTP : Time synchronization failed: {e}");
                 }
             }
 
@@ -158,30 +158,30 @@ pub async fn sync_time_with_ntp(
     stack: &'static NetworkStack,
     server: &str,
 ) -> Result<(), &'static str> {
-    info!("Starting NTP sync with server: {server}");
+    info!("NTP : Starting NTP sync with server: {server}");
 
     let server_addr = stack
         .resolve_dns(server)
         .await
-        .ok_or("Failed to resolve NTP server address")?;
+        .ok_or("NTP : Failed to resolve NTP server address")?;
 
     // Create UDP socket buffers on the heap via alloc
     let mut rx_meta = heapless::Vec::<embassy_net::udp::PacketMetadata, 4>::new();
     rx_meta
         .resize(4, embassy_net::udp::PacketMetadata::EMPTY)
-        .map_err(|_| "Failed to allocate rx_meta")?;
+        .map_err(|_| "NTP : Failed to allocate rx_meta")?;
     let mut rx_buffer = heapless::Vec::<u8, 512>::new();
     rx_buffer
         .resize(512, 0)
-        .map_err(|_| "Failed to allocate rx_buffer")?;
+        .map_err(|_| "NTP : Failed to allocate rx_buffer")?;
     let mut tx_meta = heapless::Vec::<embassy_net::udp::PacketMetadata, 4>::new();
     tx_meta
         .resize(4, embassy_net::udp::PacketMetadata::EMPTY)
-        .map_err(|_| "Failed to allocate tx_meta")?;
+        .map_err(|_| "NTP : Failed to allocate tx_meta")?;
     let mut tx_buffer = heapless::Vec::<u8, 512>::new();
     tx_buffer
         .resize(512, 0)
-        .map_err(|_| "Failed to allocate tx_buffer")?;
+        .map_err(|_| "NTP : Failed to allocate tx_buffer")?;
 
     let mut socket = UdpSocket::new(
         *stack.stack,
@@ -191,7 +191,9 @@ pub async fn sync_time_with_ntp(
         &mut tx_buffer,
     );
 
-    socket.bind(0).map_err(|_| "Failed to bind UDP socket")?;
+    socket
+        .bind(0)
+        .map_err(|_| "NTP : Failed to bind UDP socket")?;
 
     let request = NtpPacket::new_request();
     let request_bytes = request.to_bytes();
@@ -199,9 +201,9 @@ pub async fn sync_time_with_ntp(
     socket
         .send_to(&request_bytes, (server_addr, NTP_PORT))
         .await
-        .map_err(|_| "Failed to send NTP request")?;
+        .map_err(|_| "NTP : Failed to send NTP request")?;
 
-    info!("NTP request sent to {server_addr}:{NTP_PORT}");
+    info!("NTP : request sent to {server_addr}:{NTP_PORT}");
 
     let mut response_buffer = [0u8; NTP_PACKET_SIZE];
 
@@ -222,27 +224,27 @@ pub async fn sync_time_with_ntp(
                         SYSTEM_TIMER_BASE.store(current_system_time, Ordering::Relaxed);
                         TIME_SYNCED.store(1, Ordering::Relaxed);
 
-                        info!("NTP sync successful. Unix timestamp: {unix_timestamp}, System time: {current_system_time}ms");
+                        info!("NTP : sync successful. Unix timestamp: {unix_timestamp}, System time: {current_system_time}ms");
                         Ok(())
                     } else {
-                        error!("Invalid NTP timestamp received");
+                        error!("NTP : Invalid timestamp received");
                         Err("Invalid NTP timestamp")
                     }
                 } else {
-                    error!("Failed to parse NTP response");
+                    error!("NTP : Failed to parse response");
                     Err("Failed to parse NTP response")
                 }
             } else {
-                error!("NTP response too short: {len} bytes");
+                error!("NTP : response too short: {len} bytes");
                 Err("NTP response too short")
             }
         }
         Ok(Err(_)) => {
-            error!("Socket receive error");
+            error!("NTP : Socket receive error");
             Err("Socket receive error")
         }
         Err(_) => {
-            error!("NTP request timeout");
+            error!("NTP : request timeout");
             Err("NTP request timeout")
         }
     }
@@ -347,7 +349,7 @@ pub fn get_timing_info() -> heapless::String<128> {
 
         write!(
             result,
-            "Synced: {elapsed_seconds}s ago, Unix: {current_unix_time}, Boot: {current_system_time}ms",
+            "NTP : Synced: {elapsed_seconds}s ago, Unix: {current_unix_time}, Boot: {current_system_time}ms",
         ).ok();
     } else {
         write!(result, "Time not synced yet").ok();

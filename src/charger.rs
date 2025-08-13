@@ -121,14 +121,14 @@ impl Charger {
     pub async fn get_transaction_id(&self) -> i32 {
         let transaction_id_guard = self.transaction_id.lock().await;
         let id = *transaction_id_guard.borrow();
-        info!("Charger: Retrieved transaction ID: {id}");
+        info!("CHGR: Retrieved transaction ID: {id}");
         id
     }
 
     pub async fn set_transaction_id(&self, new_id: i32) {
         let transaction_id_guard = self.transaction_id.lock().await;
         *transaction_id_guard.borrow_mut() = new_id;
-        info!("Charger: Set transaction ID to: {new_id}");
+        info!("CHGR: Set transaction ID to: {new_id}");
     }
 
     pub async fn transition(
@@ -137,7 +137,7 @@ impl Charger {
     ) -> (ChargerState, heapless::Vec<OutputEvent, 2>) {
         let current_state = self.get_state().await;
 
-        info!("Transitioning from {current_state:?} with input {charger_input:?}");
+        info!("CHGR: Transitioning from {current_state:?} with input {charger_input:?}");
 
         let (new_state, events) = match (current_state, charger_input) {
             (ChargerState::Available, InputEvent::InsertCable) => {
@@ -170,17 +170,17 @@ impl Charger {
                 (ChargerState::Faulted, output_events)
             }
             (ChargerState::Faulted, _) => {
-                warn!("Charger is in faulted state, resetting to available after 5 seconds");
+                warn!("CHGR: Charger is in faulted state, resetting to available after 5 seconds");
                 Timer::after(Duration::from_secs(5)).await;
                 STATE_IN_CHANNEL.clear();
                 (ChargerState::Available, heapless::Vec::new())
             }
             _ => {
-                warn!("Invalid or unknown transition from {current_state:?} with input {charger_input:?}");
+                warn!("CHGR: Invalid or unknown transition from {current_state:?} with input {charger_input:?}");
                 (ChargerState::Faulted, heapless::Vec::new())
             }
         };
-        info!("Transition result: {new_state:?}, {events:?}");
+        info!("CHGR: Transition result: {new_state:?}, {events:?}");
         self.set_state(new_state).await;
         (new_state, events)
     }
@@ -188,19 +188,19 @@ impl Charger {
 
 #[embassy_executor::task]
 pub async fn statemachine_handler_task(charger: &'static Charger) {
-    info!("Task started: Charger State Machine Handler");
+    info!("TASK: Started Charger State Machine Handler");
 
     let publisher = STATE_PUBSUB.publisher().unwrap();
 
     loop {
         // Wait for state change events
         let event = STATE_IN_CHANNEL.receive().await;
-        info!("State Machine: Received input event: {event:?}");
+        info!("CHSM: State Machine: Received input event: {event:?}");
 
         let old_state = charger.get_state().await;
         let (new_state, output_events) = charger.transition(event).await;
         info!(
-            "State Machine: Transitioned to state: {}, events: {output_events:?}",
+            "CHSM: State Machine: Transitioned to state: {}, events: {output_events:?}",
             new_state.as_str()
         );
 
@@ -208,7 +208,7 @@ pub async fn statemachine_handler_task(charger: &'static Charger) {
         if old_state != new_state {
             publisher.publish_immediate((new_state, output_events));
             info!(
-                "State Machine: Published state change to {}",
+                "CHSM: State Machine: Published state change to {}",
                 new_state.as_str()
             );
         }

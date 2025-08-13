@@ -19,7 +19,7 @@ pub async fn mqtt_client_task(
     network: &'static NetworkStack,
     client: &'static mut MqttClient<'static, TcpSocket<'static>, 5, CountingRng>,
 ) {
-    info!("Task started: MQTT Client (Send/Receive)");
+    info!("TASK: Started MQTT Client (Send/Receive)");
 
     loop {
         // Use a timeout to prevent blocking indefinitely
@@ -39,7 +39,7 @@ pub async fn mqtt_client_task(
                 // No message received, continue
             }
             Ok(Err(e)) => {
-                warn!("Failed to receive MQTT message: {e:?}");
+                warn!("MQTT: Failed to receive MQTT message: {e:?}");
             }
             Err(_) => {
                 // Timeout occurred, this is normal when no messages are available
@@ -52,7 +52,7 @@ pub async fn mqtt_client_task(
                     // Message sent successfully
                 }
                 Err(e) => {
-                    warn!("MQTT client task: Failed to send message: {e:?}");
+                    warn!("MQTT: client task, failed to send message: {e:?}");
                     // Put the message back in the queue to retry later
                     if MQTT_SEND_CHANNEL.try_send(message).is_err() {
                         warn!("MQTT: Failed to requeue message for retry, queue full");
