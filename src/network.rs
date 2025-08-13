@@ -44,7 +44,7 @@ impl NetworkStack {
         );
 
         let (wifi_controller, interfaces) = esp_wifi::wifi::new(esp_wifi_ctrl, wifi_peripheral)
-            .expect("Failed to initialize WIFI controller");
+            .expect("NETW: Failed to initialize WIFI controller");
 
         let wifi_interface = interfaces.sta;
 
@@ -71,12 +71,12 @@ impl NetworkStack {
             .spawn(connection_task(wifi_controller, static_config))
             .ok();
 
-        info!("WiFi controller started");
+        info!("NETW: WiFi controller started");
         NetworkStack { stack, app_config }
     }
 
     pub async fn wait_for_ip(&self) {
-        info!("Waiting to get IP address...");
+        info!("NETW: Waiting to get IP address...");
         loop {
             if let Some(config) = self.stack.config_v4() {
                 info!("Got IP: {}", config.address);
@@ -106,7 +106,7 @@ impl NetworkStack {
         match result {
             Ok(ips) if !ips.is_empty() => Some(ips[0]),
             _ => {
-                error!("Failed to resolve DNS for {hostname}");
+                error!("NETW: Failed to resolve DNS for {hostname}");
                 None
             }
         }
@@ -146,7 +146,7 @@ impl NetworkStack {
             embassy_time::with_timeout(Duration::from_secs(10), socket.connect(remote_endpoint))
                 .await
         {
-            warn!("MQTT: Timeout connecting to broker");
+            warn!("NETW: Timeout connecting to broker");
             return Err(ReasonCode::NetworkError);
         }
 
@@ -164,7 +164,7 @@ impl NetworkStack {
         if let Err(_e) =
             embassy_time::with_timeout(Duration::from_secs(10), client.connect_to_broker()).await
         {
-            warn!("MQTT: Timeout during broker connection handshake");
+            warn!("NETW: Timeout during broker connection handshake");
             return Err(ReasonCode::NetworkError);
         }
 
@@ -175,7 +175,7 @@ impl NetworkStack {
         )
         .await
         {
-            warn!("MQTT: Timeout subscribing to topic");
+            warn!("NETW: Timeout subscribing to topic");
             return Err(ReasonCode::NetworkError);
         }
 
@@ -273,16 +273,16 @@ async fn connection_task(mut controller: WifiController<'static>, config: &'stat
                 ..Default::default()
             });
             controller.set_configuration(&client_config).unwrap();
-            info!("Starting wifi");
+            info!("NETW: Starting wifi");
             controller.start_async().await.unwrap();
-            info!("Wifi started!");
+            info!("NETW: Wifi started!");
         }
-        info!("About to connect...");
+        info!("NETW: About to connect...");
 
         match controller.connect_async().await {
-            Ok(_) => info!("Wifi connected!"),
+            Ok(_) => info!("NETW: Wifi connected!"),
             Err(e) => {
-                info!("Failed to connect to wifi: {e:?}");
+                info!("NETW: Failed to connect to wifi: {e:?}");
                 Timer::after(Duration::from_millis(5000)).await
             }
         }
