@@ -91,6 +91,7 @@ impl ChargerState {
 pub struct Charger {
     state: Mutex<CriticalSectionRawMutex, RefCell<ChargerState>>,
     transaction_id: Mutex<CriticalSectionRawMutex, RefCell<i32>>,
+    id_tag: Mutex<CriticalSectionRawMutex, RefCell<heapless::String<32>>>,
 }
 
 impl Default for Charger {
@@ -104,6 +105,7 @@ impl Charger {
         Self {
             state: Mutex::new(RefCell::new(ChargerState::default())),
             transaction_id: Mutex::new(RefCell::new(0)),
+            id_tag: Mutex::new(RefCell::new(heapless::String::new())),
         }
     }
 
@@ -129,6 +131,21 @@ impl Charger {
         let transaction_id_guard = self.transaction_id.lock().await;
         *transaction_id_guard.borrow_mut() = new_id;
         info!("CHGR: Set transaction ID to: {new_id}");
+    }
+
+    pub async fn get_id_tag(&self) -> heapless::String<32> {
+        let id_tag_guard = self.id_tag.lock().await;
+        let tag = id_tag_guard.borrow().clone();
+        info!("CHGR: Retrieved ID tag: {tag}");
+        tag
+    }
+
+    pub async fn set_id_tag(&self, new_tag: &str) {
+        let id_tag_guard = self.id_tag.lock().await;
+        let mut tag_ref = id_tag_guard.borrow_mut();
+        tag_ref.clear();
+        let _ = tag_ref.push_str(new_tag);
+        info!("CHGR: Set ID tag to: {new_tag}");
     }
 
     pub async fn transition(

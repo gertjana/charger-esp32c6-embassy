@@ -37,7 +37,6 @@ impl NetworkStack {
         wifi_peripheral: esp_hal::peripherals::WIFI<'static>,
         app_config: Config,
     ) -> Self {
-        // Initialize WiFi controller
         let esp_wifi_ctrl = &*mk_static!(
             EspWifiController<'static>,
             esp_wifi::init(timer1.timer0, rng).unwrap()
@@ -51,7 +50,6 @@ impl NetworkStack {
         let config = embassy_net::Config::dhcpv4(Default::default());
         let seed = (rng.random() as u64) << 32 | rng.random() as u64;
 
-        // Init network stack
         let (stack, runner) = embassy_net::new(
             wifi_interface,
             config,
@@ -59,13 +57,10 @@ impl NetworkStack {
             seed,
         );
 
-        // Store stack in static memory
         let stack = mk_static!(embassy_net::Stack<'static>, stack);
 
-        // Store app config in static memory for task access
         let static_config = mk_static!(Config, app_config.clone());
 
-        // Spawn network tasks
         spawner.spawn(net_task(runner)).ok();
         spawner
             .spawn(connection_task(wifi_controller, static_config))
@@ -124,8 +119,6 @@ impl NetworkStack {
         config
     }
 
-    /// Initialize and return an MQTT client with established connection
-    /// This creates buffers, socket, and connects to the MQTT broker
     pub async fn create_mqtt_client<'a>(
         &self,
         rx_buffer: &'a mut [u8],
@@ -160,7 +153,6 @@ impl NetworkStack {
             config,
         );
 
-        // Use a timeout for connecting to the broker
         if let Err(_e) =
             embassy_time::with_timeout(Duration::from_secs(10), client.connect_to_broker()).await
         {
@@ -168,7 +160,6 @@ impl NetworkStack {
             return Err(ReasonCode::NetworkError);
         }
 
-        // Use a timeout for subscribing to the topic
         if let Err(_e) = embassy_time::with_timeout(
             Duration::from_secs(10),
             client.subscribe_to_topic(&self.app_config.system_topic()),
@@ -206,13 +197,10 @@ impl NetworkStack {
         }
     }
 
-    /// Receive messages from MQTT broker with connection health check
     pub async fn receive_message_with_client(
         &self,
         client: &mut MqttClient<'_, TcpSocket<'_>, 5, CountingRng>,
     ) -> Result<Option<heapless::Vec<u8, BUFFER_SIZE>>, ReasonCode> {
-        // Use timeout-based approach to avoid blocking indefinitely
-        // This will attempt to receive a message with a short timeout
         match embassy_time::with_timeout(
             Duration::from_millis(DEFAULT_TIMEOUT_MS),
             client.receive_message(),
@@ -236,24 +224,14 @@ impl NetworkStack {
                     Ok(None)
                 }
             }
-            Ok(Err(e)) => {
-                // Only log errors that are not timeout/connection related
-                match e {
-                    ReasonCode::NetworkError => {
-                        // Network errors are common when no message is available
-                        // Don't spam logs for this
-                        Ok(None)
-                    }
-                    _ => {
-                        error!("MQTT: Unexpected error receiving message: {e:?}");
-                        Err(e)
-                    }
+            Ok(Err(e)) => match e {
+                ReasonCode::NetworkError => Ok(None),
+                _ => {
+                    error!("MQTT: Unexpected error receiving message: {e:?}");
+                    Err(e)
                 }
-            }
-            Err(_) => {
-                // Timeout occurred - no message available, this is normal
-                Ok(None)
-            }
+            },
+            Err(_) => Ok(None),
         }
     }
 }
@@ -262,7 +240,6 @@ impl NetworkStack {
 async fn connection_task(mut controller: WifiController<'static>, config: &'static Config) {
     loop {
         if esp_wifi::wifi::wifi_state() == WifiState::StaConnected {
-            // wait until we're no longer connected
             controller.wait_for_event(WifiEvent::StaDisconnected).await;
             Timer::after(Duration::from_millis(5000)).await
         }

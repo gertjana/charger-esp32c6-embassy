@@ -122,21 +122,18 @@ pub fn authorize(id: &str, id_tag: &str) -> Message {
 // aysnc tasks
 
 #[embassy_executor::task]
-pub async fn authorize_task() {
+pub async fn authorize_task(charger: &'static Charger) {
     info!("TASK: Started Authorize Task (PubSub Mode)");
 
-    let config = Config::from_config();
     let mut subscriber = charger::STATE_PUBSUB.subscriber().unwrap();
 
     loop {
         // Wait for state changes via PubSub
         if let WaitResult::Message((current_state, _)) = subscriber.next_message().await {
             if current_state == ChargerState::Authorizing {
-                info!(
-                    "OCPP: Sending authorization request for tag: {}",
-                    config.ocpp_id_tag
-                );
-                let authorize_request = authorize(&next_ocpp_message_id(), config.ocpp_id_tag);
+                let id_tag = charger.get_id_tag().await;
+                info!("OCPP: Sending authorization request for tag: {id_tag}");
+                let authorize_request = authorize(&next_ocpp_message_id(), &id_tag);
                 let message = parse::serialize_message(&authorize_request).unwrap();
 
                 match mqtt::MQTT_SEND_CHANNEL
@@ -261,7 +258,6 @@ pub async fn boot_notification_task() {
 pub async fn transaction_handler_task(charger: &'static Charger) {
     info!("TASK: Started OCPP Transaction Handler");
 
-    let config = Config::from_config();
     let mut subscriber = charger::STATE_PUBSUB.subscriber().unwrap();
 
     loop {
@@ -269,9 +265,10 @@ pub async fn transaction_handler_task(charger: &'static Charger) {
         {
             match current_state {
                 ChargerState::Charging if output_events.contains(&OutputEvent::ApplyPower) => {
+                    let id_tag = charger.get_id_tag().await;
                     let message = parse::serialize_message(&start_transaction(
                         &next_ocpp_message_id(),
-                        config.ocpp_id_tag,
+                        &id_tag,
                     ))
                     .unwrap();
                     let mut msg_vec = heapless::Vec::new();
@@ -287,10 +284,11 @@ pub async fn transaction_handler_task(charger: &'static Charger) {
                     }
                 }
                 ChargerState::Occupied if output_events.contains(&OutputEvent::RemovePower) => {
+                    let id_tag = charger.get_id_tag().await;
                     let message = parse::serialize_message(&stop_transaction(
                         &next_ocpp_message_id(),
                         charger.get_transaction_id().await,
-                        config.ocpp_id_tag,
+                        &id_tag,
                     ))
                     .unwrap();
                     let mut msg_vec = heapless::Vec::new();
