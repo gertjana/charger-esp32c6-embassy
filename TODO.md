@@ -1,18 +1,15 @@
 # TODO List
 
 ## Tasks
-* TLS Connection for MQTT
 
+* TLS Connection for MQTT
 
 ## Bugs
 
-* Don't go to Faulted if no valid transition is found, keep the current state, no outputevents 
+* Don't go to Faulted if no valid transition is found, keep the current state, no outputevents
 * probably same/similar issue:
   * After running for a while (hours), the time shown on the display stops (app halts)
   * WHen time is not synced initially, the next sync halts the application or panics
-
-
-
 
 ## Archive
 
@@ -30,6 +27,7 @@
 * done ~~Clean up log and make it more consistent~~
 * wont do ~~Proper (typesafe) Response Handler~~
 * done ~~Implement code for RFID-RC522 SPI Module to do proper charge card swipes~~
+* wont do ~~Research if possible: Pass on id_tag with InputEvent~~
 
 ### bugs
 
@@ -37,4 +35,3 @@
 * ~~Resetting after error, should also evaluate the hardware to set the correct state~~
 * ~~TransactionID doesn't seem to get stored correctly~~
 * ~~Don't send StatusNofication on State Authorizing~~
-
