@@ -317,7 +317,7 @@ pub async fn transaction_handler_task(charger: &'static Charger) {
 
 /// Task to handle incoming OCPP responses from MQTT
 /// Note: as the payload differs for different message types, we would need a dynamic way of parsing json
-/// none of the no_std json libraries support this (requires heap allocation)
+/// none of the no_std json libraries support this (they all require heap allocation)
 /// so for now we just parse the messages as strings and use string matching
 #[embassy_executor::task]
 pub async fn response_handler_task(charger: &'static Charger) {
