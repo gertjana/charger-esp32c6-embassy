@@ -13,8 +13,9 @@ serial = "esp32c6-charger-001"
 
 [mqtt]
 broker = "broker.hivemq.com"
-port = 1883
+port = 8883
 client_id = "esp32c6-charger-001"
+use_tls = true
 
 [ntp]
 server = "pool.ntp.org"

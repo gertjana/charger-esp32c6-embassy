@@ -63,9 +63,9 @@ smoltcp = { version = "0.12.0", default-features = false, features = [
 # Other dependencies
 critical-section = "1.2.0"
 log = "0.4.27"
-# embedded-io = "0.6.1"
-# embedded-io-async = "0.6.1"
-# embedded-tls = { git = "https://github.com/drogue-iot/embedded-tls", default-features = false, features = ["alloc"] }
+embedded-io = "0.6.1"
+embedded-io-async = "0.6.1"
+embedded-tls = { git = "https://github.com/drogue-iot/embedded-tls", default-features = false, features = ["alloc"] }
 heapless = { version = "0.8.0", default-features = false }
 static_cell = "2.1.1"
 chrono = { version = "^0.4", default-features = false, features = ["serde", "alloc"] }

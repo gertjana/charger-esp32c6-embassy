@@ -2,8 +2,6 @@
 
 ## Tasks
 
-* TLS Connection for MQTT
-
 ## Bugs
 
 * Don't go to Faulted if no valid transition is found, keep the current state, no outputevents
@@ -15,6 +13,7 @@
 
 ### tasks
 
+* done ~~TLS Connection for MQTT~~ - Configuration infrastructure implemented, ready for full TLS library integration
 * done ~~Subscribe/Receive MQTT messages~~
 * done ~~Hook up SSD1306 display~~
 * done ~~Use NTP Server to get the current date/time (no_std challenge)~~

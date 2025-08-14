@@ -13,6 +13,7 @@ pub struct Config {
     pub mqtt_broker: &'static str,
     pub mqtt_port: u16,
     pub mqtt_client_id: &'static str,
+    pub mqtt_use_tls: bool,
     pub ntp_server: &'static str,
     pub ntp_sync_interval_minutes: u16, // NTP sync interval in minutes
     pub timezone_offset_hours: i8, // Timezone offset from UTC in hours (e.g., +1 for CET, -5 for EST)
@@ -48,6 +49,10 @@ fn extract_toml_integer(content: &str, section: &str, key: &str) -> Option<u16> 
     extract_toml_string(content, section, key)?.parse().ok()
 }
 
+fn extract_toml_boolean(content: &str, section: &str, key: &str) -> Option<bool> {
+    extract_toml_string(content, section, key)?.parse().ok()
+}
+
 impl Config {
     pub fn from_config() -> Self {
         // Include the TOML configuration at compile time
@@ -69,6 +74,8 @@ impl Config {
         let toml_mqtt_port = extract_toml_integer(CONFIG_TOML, "mqtt", "port").unwrap_or(1883);
         let toml_mqtt_client_id =
             extract_toml_string(CONFIG_TOML, "mqtt", "client_id").unwrap_or("esp32c6-charger-001");
+        let toml_mqtt_use_tls =
+            extract_toml_boolean(CONFIG_TOML, "mqtt", "use_tls").unwrap_or(false);
         let toml_ntp_server =
             extract_toml_string(CONFIG_TOML, "ntp", "server").unwrap_or("pool.ntp.org");
         let toml_ntp_sync_interval_minutes =
@@ -92,6 +99,9 @@ impl Config {
                 .and_then(|p| p.parse().ok())
                 .unwrap_or(toml_mqtt_port),
             mqtt_client_id: option_env!("CHARGER_MQTT_CLIENT_ID").unwrap_or(toml_mqtt_client_id),
+            mqtt_use_tls: option_env!("CHARGER_MQTT_USE_TLS")
+                .and_then(|tls| tls.parse().ok())
+                .unwrap_or(toml_mqtt_use_tls),
             ntp_server: option_env!("CHARGER_NTP_SERVER").unwrap_or(toml_ntp_server),
             ntp_sync_interval_minutes: option_env!("CHARGER_NTP_SYNC_INTERVAL_MINUTES")
                 .and_then(|interval| interval.parse().ok())
@@ -116,8 +126,11 @@ impl Config {
             mqtt_broker: option_env!("CHARGER_MQTT_BROKER").unwrap_or("broker.hivemq.com"),
             mqtt_port: option_env!("CHARGER_MQTT_PORT")
                 .and_then(|p| p.parse().ok())
-                .unwrap_or(1883),
+                .unwrap_or(8883),
             mqtt_client_id: option_env!("CHARGER_MQTT_CLIENT_ID").unwrap_or("esp32c6-charger-001"),
+            mqtt_use_tls: option_env!("CHARGER_MQTT_USE_TLS")
+                .and_then(|tls| tls.parse().ok())
+                .unwrap_or(true),
             ntp_server: option_env!("CHARGER_NTP_SERVER").unwrap_or("pool.ntp.org"),
             ntp_sync_interval_minutes: option_env!("CHARGER_NTP_SYNC_INTERVAL_MINUTES")
                 .and_then(|interval| interval.parse().ok())
