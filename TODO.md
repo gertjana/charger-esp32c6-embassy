@@ -36,5 +36,3 @@
 * ~~TransactionID doesn't seem to get stored correctly~~
 * ~~Don't send StatusNofication on State Authorizing~~
 * ~~Don't go to Faulted if no valid transition is found, keep the current state, no outputevents~~
-
-
