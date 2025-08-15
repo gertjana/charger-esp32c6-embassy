@@ -323,7 +323,7 @@ pub fn get_date_time() -> Option<chrono::DateTime<Utc>> {
     }
 }
 
-/// dfdsf
+/// Check if NTP time synchronization has been completed successfully
 pub fn is_time_synced() -> bool {
     TIME_SYNCED.load(Ordering::Relaxed) != 0
 }
