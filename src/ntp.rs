@@ -140,7 +140,7 @@ pub async fn ntp_sync_task(network: &'static NetworkStack) {
 
             // Sync every 4 hours or retry every 15 minutes on failure
             let wait_time = if is_time_synced() {
-                Duration::from_secs(60 * config.ntp_sync_interval_minutes as u64) // 4 hours
+                Duration::from_secs(60 * config.ntp_sync_interval_minutes as u64) // configurable interval
             } else {
                 Duration::from_secs(900) // 15 minutes
             };
