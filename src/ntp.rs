@@ -116,7 +116,6 @@ impl NtpPacket {
 pub async fn ntp_sync_task(network: &'static NetworkStack) {
     info!("TASK: Started NTP Time Synchronization");
 
-    // Wait longer for MQTT to be fully established
     Timer::after(Duration::from_secs(60)).await;
 
     let config = Config::from_config();
@@ -141,7 +140,7 @@ pub async fn ntp_sync_task(network: &'static NetworkStack) {
 
             // Sync every 4 hours or retry every 15 minutes on failure
             let wait_time = if is_time_synced() {
-                Duration::from_secs(14400) // 4 hours
+                Duration::from_secs(60 * config.ntp_sync_interval_minutes as u64) // 4 hours
             } else {
                 Duration::from_secs(900) // 15 minutes
             };
@@ -160,27 +159,31 @@ pub async fn sync_time_with_ntp(
 ) -> Result<(), &'static str> {
     info!("NTP : Starting NTP sync with server: {server}");
 
-    let server_addr = stack
-        .resolve_dns(server)
-        .await
-        .ok_or("NTP : Failed to resolve NTP server address")?;
+    let server_addr = match embassy_time::with_timeout(Duration::from_secs(10), async {
+        stack.resolve_dns(server).await
+    })
+    .await
+    {
+        Ok(Some(addr)) => addr,
+        Ok(None) => return Err("NTP : Failed to resolve NTP server address"),
+        Err(_) => return Err("NTP : DNS resolution timeout"),
+    };
 
-    // Create UDP socket buffers on the heap via alloc
-    let mut rx_meta = heapless::Vec::<embassy_net::udp::PacketMetadata, 4>::new();
+    let mut rx_meta = heapless::Vec::<embassy_net::udp::PacketMetadata, 2>::new();
     rx_meta
-        .resize(4, embassy_net::udp::PacketMetadata::EMPTY)
+        .resize(2, embassy_net::udp::PacketMetadata::EMPTY)
         .map_err(|_| "NTP : Failed to allocate rx_meta")?;
-    let mut rx_buffer = heapless::Vec::<u8, 512>::new();
+    let mut rx_buffer = heapless::Vec::<u8, 128>::new();
     rx_buffer
-        .resize(512, 0)
+        .resize(128, 0)
         .map_err(|_| "NTP : Failed to allocate rx_buffer")?;
-    let mut tx_meta = heapless::Vec::<embassy_net::udp::PacketMetadata, 4>::new();
+    let mut tx_meta = heapless::Vec::<embassy_net::udp::PacketMetadata, 2>::new();
     tx_meta
-        .resize(4, embassy_net::udp::PacketMetadata::EMPTY)
+        .resize(2, embassy_net::udp::PacketMetadata::EMPTY)
         .map_err(|_| "NTP : Failed to allocate tx_meta")?;
-    let mut tx_buffer = heapless::Vec::<u8, 512>::new();
+    let mut tx_buffer = heapless::Vec::<u8, 128>::new();
     tx_buffer
-        .resize(512, 0)
+        .resize(128, 0)
         .map_err(|_| "NTP : Failed to allocate tx_buffer")?;
 
     let mut socket = UdpSocket::new(
@@ -191,23 +194,26 @@ pub async fn sync_time_with_ntp(
         &mut tx_buffer,
     );
 
-    socket
-        .bind(0)
-        .map_err(|_| "NTP : Failed to bind UDP socket")?;
+    if socket.bind(0).is_err() {
+        return Err("NTP : Failed to bind UDP socket");
+    }
 
     let request = NtpPacket::new_request();
     let request_bytes = request.to_bytes();
 
-    socket
+    if socket
         .send_to(&request_bytes, (server_addr, NTP_PORT))
         .await
-        .map_err(|_| "NTP : Failed to send NTP request")?;
+        .is_err()
+    {
+        return Err("NTP : Failed to send NTP request");
+    }
 
     info!("NTP : request sent to {server_addr}:{NTP_PORT}");
 
     let mut response_buffer = [0u8; NTP_PACKET_SIZE];
 
-    match embassy_time::with_timeout(Duration::from_secs(5), async {
+    let result = match embassy_time::with_timeout(Duration::from_secs(5), async {
         socket.recv_from(&mut response_buffer).await
     })
     .await
@@ -217,14 +223,13 @@ pub async fn sync_time_with_ntp(
                 // Parse response
                 if let Some(response) = NtpPacket::from_bytes(&response_buffer) {
                     if let Some(unix_timestamp) = response.get_unix_timestamp() {
-                        // Store NTP time and current system timer value
-                        let current_system_time = Instant::now().as_millis() as u32;
+                        let current_system_time = Instant::now().as_secs() as u32;
 
                         NTP_BASE_TIME.store(unix_timestamp, Ordering::Relaxed);
                         SYSTEM_TIMER_BASE.store(current_system_time, Ordering::Relaxed);
                         TIME_SYNCED.store(1, Ordering::Relaxed);
 
-                        info!("NTP : sync successful. Unix timestamp: {unix_timestamp}, System time: {current_system_time}ms");
+                        info!("NTP : sync successful. Unix timestamp: {unix_timestamp}, System time: {current_system_time}s");
                         Ok(())
                     } else {
                         error!("NTP : Invalid timestamp received");
@@ -247,7 +252,11 @@ pub async fn sync_time_with_ntp(
             error!("NTP : request timeout");
             Err("NTP request timeout")
         }
-    }
+    };
+
+    socket.close();
+
+    result
 }
 
 pub fn get_current_unix_time() -> u32 {
@@ -257,17 +266,13 @@ pub fn get_current_unix_time() -> u32 {
 
     let ntp_base = NTP_BASE_TIME.load(Ordering::Relaxed);
     let system_base = SYSTEM_TIMER_BASE.load(Ordering::Relaxed);
-    let current_system_time = Instant::now().as_millis() as u32;
+    let current_system_time = Instant::now().as_secs() as u32;
 
-    // Calculate elapsed time in seconds since NTP sync
-    let elapsed_ms = current_system_time.wrapping_sub(system_base);
-    let elapsed_seconds = elapsed_ms / 1000;
+    let elapsed_seconds = current_system_time.wrapping_sub(system_base);
 
-    // Return NTP time + elapsed time
     ntp_base + elapsed_seconds
 }
 
-/// Format Unix timestamp as ISO8601 string (simplified)
 pub fn get_iso8601_time() -> heapless::String<32> {
     let timestamp = get_current_unix_time();
 
@@ -318,21 +323,20 @@ pub fn get_date_time() -> Option<chrono::DateTime<Utc>> {
     }
 }
 
+/// 
 pub fn is_time_synced() -> bool {
     TIME_SYNCED.load(Ordering::Relaxed) != 0
-}
-
+/// Get the number of minutes since the last NTP sync
 pub fn minutes_since_last_sync() -> u32 {
     if !is_time_synced() {
         return u32::MAX; // No sync yet
     }
 
     let system_base = SYSTEM_TIMER_BASE.load(Ordering::Relaxed);
-    let current_system_time = Instant::now().as_millis() as u32;
+    let current_system_time = Instant::now().as_secs() as u32;
 
-    // Calculate elapsed time in minutes since NTP sync
-    let elapsed_ms = current_system_time.wrapping_sub(system_base);
-    elapsed_ms / (1000 * 60) // Convert to minutes
+    let elapsed_seconds = current_system_time.wrapping_sub(system_base);
+    elapsed_seconds / 60 // Convert to minutes
 }
 
 /// Get detailed timing information for debugging
@@ -342,14 +346,13 @@ pub fn get_timing_info() -> heapless::String<128> {
     if is_time_synced() {
         let ntp_base = NTP_BASE_TIME.load(Ordering::Relaxed);
         let system_base = SYSTEM_TIMER_BASE.load(Ordering::Relaxed);
-        let current_system_time = Instant::now().as_millis() as u32;
-        let elapsed_ms = current_system_time.wrapping_sub(system_base);
-        let elapsed_seconds = elapsed_ms / 1000;
+        let current_system_time = Instant::now().as_secs() as u32;
+        let elapsed_seconds = current_system_time.wrapping_sub(system_base);
         let current_unix_time = ntp_base + elapsed_seconds;
 
         write!(
             result,
-            "NTP : Synced: {elapsed_seconds}s ago, Unix: {current_unix_time}, Boot: {current_system_time}ms",
+            "NTP : Synced: {elapsed_seconds}s ago, Unix: {current_unix_time}, Boot: {current_system_time}s",
         ).ok();
     } else {
         write!(result, "Time not synced yet").ok();
@@ -415,7 +418,6 @@ pub fn get_local_date_formatted(timezone_offset_hours: i8) -> heapless::String<1
     }
 }
 
-/// Helper function to write u32 to string with zero padding
 fn write_u32_padded(s: &mut heapless::String<32>, num: u32, width: usize) {
     let mut temp = heapless::String::<12>::new();
     write_u32_to_temp(&mut temp, num);
@@ -428,7 +430,6 @@ fn write_u32_padded(s: &mut heapless::String<32>, num: u32, width: usize) {
     s.push_str(&temp).unwrap();
 }
 
-/// Helper function to write u32 to a temporary string
 fn write_u32_to_temp(s: &mut heapless::String<12>, mut num: u32) {
     if num == 0 {
         s.push('0').unwrap();
@@ -451,7 +452,6 @@ fn write_u32_to_temp(s: &mut heapless::String<12>, mut num: u32) {
     }
 }
 
-/// Convert days since Unix epoch to (year, month, day)
 fn days_to_date(mut days: u32) -> (u32, u32, u32) {
     // Start from 1970
     let mut year = 1970;
@@ -491,7 +491,6 @@ fn days_to_date(mut days: u32) -> (u32, u32, u32) {
     (year, month, day)
 }
 
-/// Check if a year is a leap year
 fn is_leap_year(year: u32) -> bool {
     (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
 }
