@@ -44,7 +44,7 @@ pub enum ChargerState {
     Off,
     Faulted,
     Available,
-    Occupied,
+    Preparing,
     Charging,
     Authorizing,
 }
@@ -57,15 +57,15 @@ impl Default for ChargerState {
 
 impl ChargerState {
     pub fn is_operational(&self) -> bool {
-        matches!(self, Self::Available | Self::Occupied | Self::Charging)
+        matches!(self, Self::Available | Self::Preparing | Self::Charging)
     }
 
     pub fn is_charging(&self) -> bool {
         matches!(self, Self::Charging)
     }
 
-    pub fn is_occupied(&self) -> bool {
-        matches!(self, Self::Occupied | Self::Charging)
+    pub fn is_prepared(&self) -> bool {
+        matches!(self, Self::Preparing | Self::Charging)
     }
 
     pub fn is_available(&self) -> bool {
@@ -79,9 +79,9 @@ impl ChargerState {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Off => "Off",
-            Self::Faulted => "Error",
+            Self::Faulted => "Faulted",
             Self::Available => "Available",
-            Self::Occupied => "Occupied",
+            Self::Preparing => "Preparing",
             Self::Charging => "Charging",
             Self::Authorizing => "Authorizing",
         }
@@ -158,9 +158,9 @@ impl Charger {
 
         let (new_state, events) = match (current_state, charger_input) {
             (ChargerState::Available, InputEvent::InsertCable) => {
-                (ChargerState::Occupied, heapless::Vec::new())
+                (ChargerState::Preparing, heapless::Vec::new())
             }
-            (ChargerState::Occupied, InputEvent::SwipeDetected) => {
+            (ChargerState::Preparing, InputEvent::SwipeDetected) => {
                 (ChargerState::Authorizing, heapless::Vec::new())
             }
             (ChargerState::Authorizing, InputEvent::Accepted) => (
@@ -168,16 +168,16 @@ impl Charger {
                 heapless::Vec::from_slice(&[OutputEvent::ApplyPower, OutputEvent::Lock]).unwrap(),
             ),
             (ChargerState::Authorizing, InputEvent::Rejected) => (
-                ChargerState::Occupied,
+                ChargerState::Preparing,
                 heapless::Vec::from_slice(&[OutputEvent::ShowRejected]).unwrap(),
             ),
             (ChargerState::Charging, InputEvent::SwipeDetected) => {
                 let output_events =
                     heapless::Vec::from_slice(&[OutputEvent::RemovePower, OutputEvent::Unlock])
                         .unwrap_or_default();
-                (ChargerState::Occupied, output_events)
+                (ChargerState::Preparing, output_events)
             }
-            (ChargerState::Occupied, InputEvent::RemoveCable) => {
+            (ChargerState::Preparing, InputEvent::RemoveCable) => {
                 (ChargerState::Available, heapless::Vec::new())
             }
             (ChargerState::Charging, InputEvent::RemoveCable) => {

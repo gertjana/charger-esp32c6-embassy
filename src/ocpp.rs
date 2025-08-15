@@ -90,7 +90,7 @@ pub fn stop_transaction(id: &str, transaction_id: i32, id_tag: &str) -> Message 
 pub fn status_notification(id: &str, status: ChargerState) -> Message {
     let status = match status {
         ChargerState::Available => ChargePointStatus::Available,
-        ChargerState::Occupied => ChargePointStatus::Preparing,
+        ChargerState::Preparing => ChargePointStatus::Preparing,
         ChargerState::Charging => ChargePointStatus::Charging,
         ChargerState::Faulted => ChargePointStatus::Faulted,
         ChargerState::Off => ChargePointStatus::Unavailable,
@@ -283,7 +283,7 @@ pub async fn transaction_handler_task(charger: &'static Charger) {
                         }
                     }
                 }
-                ChargerState::Occupied if output_events.contains(&OutputEvent::RemovePower) => {
+                ChargerState::Preparing if output_events.contains(&OutputEvent::RemovePower) => {
                     let id_tag = charger.get_id_tag().await;
                     let message = parse::serialize_message(&stop_transaction(
                         &next_ocpp_message_id(),
