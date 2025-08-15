@@ -323,9 +323,10 @@ pub fn get_date_time() -> Option<chrono::DateTime<Utc>> {
     }
 }
 
-/// 
+/// dfdsf
 pub fn is_time_synced() -> bool {
     TIME_SYNCED.load(Ordering::Relaxed) != 0
+}
 /// Get the number of minutes since the last NTP sync
 pub fn minutes_since_last_sync() -> u32 {
     if !is_time_synced() {
