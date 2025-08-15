@@ -7,11 +7,29 @@ vars: {
 grid-columns: 1
 grid-gap: 0
 
+classes: {
+  happy: { 
+    style {
+      stroke: green
+      stroke-width: 4
+    }
+  }
+  sad: {
+    style {
+      stroke: red
+      stroke-width: 4
+    }
+  }
+}
+
+
 Transitions: {
     style: {
         stroke-width: 0
     }
 }
+
+
 Transitions: |rust
   fn transition(state: ChargerState, event: InputEvent): (ChargerState, [OutputEvent]) {
     match (state, event) {
@@ -30,10 +48,6 @@ Transitions: |rust
 StateMachine: {
   label: "Charger State Machine"
   direction: "right"
-  Available: {
-    style: {fill: lightgreen}
-      icon: "./images/unlock_nocable.png"
-  }
   Occupied: {
     style: {fill: lightyellow}
       icon: "./images/inserted_unlocked.png"
@@ -42,20 +56,38 @@ StateMachine: {
     style: {fill: lightblue}
     icon: "./images/lock+charging.png"
   }
-  Faulted: {     
-    style: {fill: pink}
-      icon: "./images/unlock_wide.png"
-  }
   Authorizing: {
     style: {fill: orange}  
     icon: "./images/inserted_unlocked.png"
   }
-  Available -> Occupied: Insert Cable
-  Occupied -> Authorizing: Swipe Card
-  Authorizing -> Charging: Accepted
-  Authorizing -> Occupied: Rejected
-  Charging -> Occupied: Swipe Card
-  All States -> Faulted: No Valid Transition
-  Faulted -> Available: Reset
+
+  StartTransaction {
+    style: {fill: lightblue}
+  }
+
+  StopTransaction {
+    style: {fill: lightcoral}
+  }
+  All States {}
+  Faulted: {     
+    style: {fill: pink}
+      icon: "./images/unlock_wide.png"
+  }
+  Available: {
+    style: {fill: lightgreen}
+      icon: "./images/unlock_nocable.png"
+  }
+
+  All States -> Faulted: Error occured {class: sad}
+  Available -> Occupied: Insert Cable {class: happy}
+  Occupied -> Authorizing: Swipe Card {class: happy}
+  Authorizing -> StartTransaction: Authorization Accepted {class: happy}
+  StartTransaction -> Charging: Transaction Accepted {class: happy}
+  StartTransaction -> Occupied: Transaction Rejected {class: sad}
+  Authorizing -> Occupied: Authorization Rejected {class: sad}
+  Charging -> StopTransaction: Swipe Card {class: happy}
+  StopTransaction -> Charging: Transaction Rejected {class: sad}
+  StopTransaction -> Occupied: Trans Accepted {class: happy}
+  Faulted -> Available: Reset {class: happy}
 }
 

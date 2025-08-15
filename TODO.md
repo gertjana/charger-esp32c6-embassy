@@ -1,15 +1,19 @@
 # TODO List
 
-## Tasks
+## Current
+
+### Tasks
 * TLS Connection for MQTT
 
 
-## Bugs
+### Bugs
 
 * Don't go to Faulted if no valid transition is found, keep the current state, no outputevents 
 * probably same/similar issue:
   * After running for a while (hours), the time shown on the display stops (app halts)
   * WHen time is not synced initially, the next sync halts the application or panics
+
+
 
 
 
