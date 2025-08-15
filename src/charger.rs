@@ -194,7 +194,7 @@ impl Charger {
             }
             _ => {
                 warn!("CHGR: Invalid or unknown transition from {current_state:?} with input {charger_input:?}");
-                (ChargerState::Faulted, heapless::Vec::new())
+                (current_state, heapless::Vec::new())
             }
         };
         info!("CHGR: Transition result: {new_state:?}, {events:?}");
