@@ -1,0 +1,55 @@
+{
+  "jobs": [
+    {
+      "description": "",
+      "id": "d2cd8728-ea1b-4761-be97-28c412d9f855",
+      "settings": {
+        "board_only": false,
+        "board_outlines_chaining_epsilon": 0.01,
+        "cut_vias_in_body": false,
+        "description": "",
+        "export_board_body": true,
+        "export_components": true,
+        "export_inner_copper": false,
+        "export_pads": false,
+        "export_silkscreen": false,
+        "export_soldermask": false,
+        "export_tracks": false,
+        "export_zones": false,
+        "fill_all_vias": false,
+        "format": "stl",
+        "fuse_shapes": false,
+        "include_dnp": true,
+        "include_unspecified": true,
+        "occt_format": 5,
+        "optimize_step": true,
+        "output_filename": ".stl",
+        "overwrite": false,
+        "subst_models": true,
+        "use_defined_origin": false,
+        "use_drill_origin": false,
+        "use_grid_origin": false,
+        "use_pcb_center_origin": true,
+        "user_origin.x": 150.0,
+        "user_origin.y": 115.0,
+        "vrml_model_dir": "",
+        "vrml_relative_paths": false
+      },
+      "type": "pcb_export_3d"
+    }
+  ],
+  "meta": {
+    "version": 1
+  },
+  "outputs": [
+    {
+      "description": "",
+      "id": "be63a86e-7514-4ece-b30f-b64f08441f49",
+      "only": [],
+      "settings": {
+        "output_path": "Export3D"
+      },
+      "type": "folder"
+    }
+  ]
+}

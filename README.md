@@ -33,18 +33,11 @@ client_id = "esp32c6-charger-001"
 
 ### 2. Environment Variable Overrides (Optional)
 
-You can override any configuration value using environment variables:
+You can override any configuration value using environment variables, the naming i:
 
-```bash
-export CHARGER_WIFI_SSID="MyWiFiNetwork"
-export CHARGER_WIFI_PASSWORD="MyWiFiPassword"
-export CHARGER_NAME="my-charger-001"
-export CHARGER_MODEL="ESP32-C6"
-export CHARGER_VENDOR="My Company"
-export CHARGER_SERIAL="my-charger-001"
-export CHARGER_MQTT_BROKER="192.168.1.100"
-export CHARGER_MQTT_PORT="1883"
-export CHARGER_MQTT_CLIENT_ID="my-charger-001"
+```
+CHARGER_<section>_key>
+for instance CHARGER_WIFI_ID
 ```
 
 ### 3. Build and Flash
@@ -54,41 +47,9 @@ cargo build
 cargo run
 ```
 
-## Configuration Reference
-
-### WiFi Settings
-- `ssid`: Your WiFi network name
-- `password`: Your WiFi network password
-
-### Charger Identity
-- `name`: Human-readable charger name for identification
-- `model`: Hardware model identifier (default: "ESP32-C6")
-- `vendor`: Manufacturer or organization name
-- `serial`: Unique serial number for this charger instance
-
-### MQTT Connection
-- `broker`: MQTT broker hostname or IP address
-- `port`: MQTT broker port (default: 1883)
-- `client_id`: Unique identifier for MQTT client connection
-
-The charger automatically generates MQTT topics based on the serial number:
-- Publishing topic: `/charger/{serial}`
-- Subscription topic: `/system/{serial}`
-
-## Hardware Connections
-
-| Function | GPIO Pin | Description |
-|----------|----------|-------------|
-| Onboard LED | GPIO15 | Charging status indicator (on when charging) |
-| Cable Switch | GPIO0 | Cable connection detector (pulls low when inserted) |
-| Swipe Switch | GPIO1 | Card/authorization detector (pulls low when swiped) |
-| Charger Relay | GPIO2 | Main charging relay control (high to enable charging) |
-| Display SDA | GPIO22 | I2C data line for SSD1306 OLED display |
-| Display SCL | GPIO23 | I2C clock line for SSD1306 OLED display |
-
 ## OCPP Protocol Support
 
-The charger implements OCPP 1.6 protocol with bidirectional MQTT communication:
+The charger implements OCPP 1.6 protocol:
 
 ### Outgoing Messages (Published to `/charger/{serial}`)
 - **Authorize**: Sent when a user swipes their card for authorization
@@ -97,12 +58,7 @@ The charger implements OCPP 1.6 protocol with bidirectional MQTT communication:
 - **StartTransaction**: Charging session initiation with ID tag and timestamp
 - **StopTransaction**: Charging session completion with transaction ID and timestamp
 
-### Incoming Messages (Subscribed to `/system/{serial}`)
-- **Authorize Response**: Server response to authorize requests (Accepted/Rejected)
-- **BootNotification Response**: Server acknowledgment of charger registration
-- **Heartbeat Response**: Server acknowledgment of heartbeat messages
-- **StartTransaction Response**: Server confirmation with transaction ID
-- **StopTransaction Response**: Server acknowledgment of transaction completion
+### Responses and incoming Messages (Subscribed to `/system/{serial}`)
 
 ## Development
 
