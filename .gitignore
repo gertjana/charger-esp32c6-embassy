@@ -25,3 +25,6 @@ app_config.toml
 #.idea/
 test_build.sh
 .DS_STore
+kicad/#auto_saved_files#
+kicad/_autosave*
+kicad/*.lck
