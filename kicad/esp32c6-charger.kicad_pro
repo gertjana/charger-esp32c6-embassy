@@ -37,9 +37,9 @@
         "other_text_thickness": 0.15,
         "other_text_upright": false,
         "pads": {
-          "drill": 0.8,
-          "height": 1.27,
-          "width": 2.54
+          "drill": 3.0,
+          "height": 3.5,
+          "width": 3.5
         },
         "silk_line_width": 0.1,
         "silk_text_italic": false,
@@ -52,7 +52,48 @@
         }
       },
       "diff_pair_dimensions": [],
-      "drc_exclusions": [],
+      "drc_exclusions": [
+        [
+          "silk_edge_clearance|124913082|90000000|dea9f22d-a50f-4881-842c-937c2408673d|fad58545-6b90-4d60-bd57-913d7f23e158",
+          ""
+        ],
+        [
+          "silk_edge_clearance|132528000|139840000|518d4467-e6e6-4c54-88c4-654f89932f34|faa6d91e-6852-435c-85a1-ac17603ef21c",
+          ""
+        ],
+        [
+          "silk_edge_clearance|136983638|140000000|518d4467-e6e6-4c54-88c4-654f89932f34|db569433-e868-4792-a16d-85ca8a1d7ef9",
+          ""
+        ],
+        [
+          "silk_edge_clearance|145982000|140000000|518d4467-e6e6-4c54-88c4-654f89932f34|83217d91-5ba7-4c5b-8ec6-13c8b7806873",
+          ""
+        ],
+        [
+          "silk_edge_clearance|86234295|90000000|dea9f22d-a50f-4881-842c-937c2408673d|fb274619-5da7-4554-b5e7-58d79e8454ac",
+          ""
+        ],
+        [
+          "silk_over_copper|132588000|136144000|e60a90f7-6d90-49ad-b69b-0739dbf72c39|00000000-0000-0000-0000-000000000000",
+          ""
+        ],
+        [
+          "silk_over_copper|150368000|136150079|ada7e52f-c231-4268-88d4-61d1b070af63|00000000-0000-0000-0000-000000000000",
+          ""
+        ],
+        [
+          "silk_overlap|120154880|117737000|6db88f52-4815-4516-9616-ca8565c5ec60|6e89e887-6de0-4855-ae60-b4998e16faf3",
+          ""
+        ],
+        [
+          "text_height|146304000|118110000|b363df41-8a34-41fe-8887-d90067d360b0|00000000-0000-0000-0000-000000000000",
+          ""
+        ],
+        [
+          "text_height|149606000|117094000|14e365fd-176e-4bcf-82f6-838d7c1dfdc7|00000000-0000-0000-0000-000000000000",
+          ""
+        ]
+      ],
       "meta": {
         "version": 2
       },
