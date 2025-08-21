@@ -148,6 +148,8 @@ pub async fn authorize_task(charger: &'static Charger) {
                 }
             }
         }
+        // ignore any other messages
+        Timer::after(Duration::from_millis(100)).await; // Avoid busy loop
     }
 }
 
