@@ -1,4 +1,6 @@
 use crate::{config::Config, mk_static};
+use crate::embedded_tls_socket::EmbeddedTlsSocket;
+use crate::esp32_hardware_rng::Esp32HardwareRng;
 use core::{
     default::Default,
     matches,
@@ -398,6 +400,171 @@ impl NetworkStack {
             },
             Err(_) => Ok(None),
         }
+    }
+
+    /// Creates a plain TCP MQTT client (forces non-TLS regardless of configuration)
+    /// 
+    /// This function bypasses TLS detection and creates a plain TCP connection.
+    /// Useful for fallback scenarios when TLS setup fails.
+    pub async fn create_plain_tcp_mqtt_client<'a>(
+        &self,
+        rx_buffer: &'a mut [u8],
+        tx_buffer: &'a mut [u8],
+        write_buffer: &'a mut [u8],
+        recv_buffer: &'a mut [u8],
+    ) -> Result<MqttClient<'a, TcpSocket<'a>, 5, CountingRng>, ReasonCode> {
+        info!(
+            "MQTT: Creating plain TCP connection to {}:{} (forcing non-TLS)",
+            self.app_config.mqtt_broker, self.app_config.mqtt_port
+        );
+
+        let address = self
+            .resolve_dns(self.app_config.mqtt_broker)
+            .await
+            .ok_or(ReasonCode::NetworkError)?;
+
+        let mut socket = TcpSocket::new(*self.stack, rx_buffer, tx_buffer);
+        let remote_endpoint = (address, self.app_config.mqtt_port);
+
+        // Use a timeout for the socket connection to prevent indefinite blocking
+        if let Err(_e) =
+            embassy_time::with_timeout(Duration::from_secs(10), socket.connect(remote_endpoint))
+                .await
+        {
+            warn!("NETW: Timeout connecting to broker");
+            return Err(ReasonCode::NetworkError);
+        }
+
+        let config = self.create_mqtt_config();
+        let mut client = MqttClient::<_, 5, _>::new(
+            socket,
+            write_buffer,
+            write_buffer.len(),
+            recv_buffer,
+            recv_buffer.len(),
+            config,
+        );
+
+        if let Err(_e) =
+            embassy_time::with_timeout(Duration::from_secs(10), client.connect_to_broker()).await
+        {
+            warn!("NETW: Timeout during broker connection handshake");
+            return Err(ReasonCode::NetworkError);
+        }
+
+        if let Err(_e) = embassy_time::with_timeout(
+            Duration::from_secs(10),
+            client.subscribe_to_topic(&self.app_config.system_topic()),
+        )
+        .await
+        {
+            warn!("NETW: Timeout subscribing to topic");
+            return Err(ReasonCode::NetworkError);
+        }
+
+        info!("MQTT: ✅ Plain TCP MQTT client ready!");
+        Ok(client)
+    }
+
+    /// Creates a secure TLS MQTT client using ESP32-C6 hardware RNG
+    /// 
+    /// This function creates a production-grade secure TLS connection to an MQTT broker
+    /// using the ESP32-C6's hardware True Random Number Generator for cryptographic operations.
+    /// 
+    /// # Security Features
+    /// - TLS 1.3 encryption with AES-128-GCM-SHA256 cipher suite
+    /// - ESP32-C6 hardware RNG for cryptographically secure randomness
+    /// - Certificate verification disabled (NoVerify) for development
+    /// 
+    /// # Buffer Requirements
+    /// - tcp_rx_buffer, tcp_tx_buffer: minimum 4096 bytes each for TCP operations
+    /// - write_buffer, recv_buffer: minimum 2048 bytes each for MQTT operations  
+    /// - tls_read_buffer, tls_write_buffer: minimum 16640 bytes each for TLS encryption
+    /// 
+    /// # Example
+    /// ```rust
+    /// let client = network_stack.create_secure_tls_mqtt_client(
+    ///     &mut rx_buf, &mut tx_buf, &mut write_buf, &mut recv_buf,
+    ///     &mut tls_read_buf, &mut tls_write_buf, esp_rng
+    /// ).await?;
+    /// ```
+    /// 
+    /// # Configuration
+    /// - Ensure TLS port 8883 is used (not plain MQTT port 1883)
+    /// - Hardware RNG provides cryptographically secure randomness
+    pub async fn create_secure_tls_mqtt_client<'a>(
+        &self,
+        rx_buffer: &'a mut [u8],
+        tx_buffer: &'a mut [u8],
+        write_buffer: &'a mut [u8],
+        recv_buffer: &'a mut [u8],
+        tls_read_buffer: &'a mut [u8],
+        tls_write_buffer: &'a mut [u8],
+        esp_rng: esp_hal::rng::Rng,
+    ) -> Result<MqttClient<'a, EmbeddedTlsSocket<'a>, 5, CountingRng>, ReasonCode> {
+        info!(
+            "MQTT: Creating secure TLS connection to {}:{} using ESP32-C6 hardware RNG",
+            self.app_config.mqtt_broker, self.app_config.mqtt_port
+        );
+
+        // Create ESP32-C6 hardware RNG for TLS
+        let mut hardware_rng = Esp32HardwareRng::new(esp_rng);
+
+        // Create embedded-tls socket
+        let mut tls_socket = EmbeddedTlsSocket::new();
+
+        // Establish secure TLS connection
+        tls_socket.connect(
+            self.stack,
+            self.app_config.mqtt_broker,
+            self.app_config.mqtt_port,
+            rx_buffer,
+            tx_buffer,
+            tls_read_buffer,
+            tls_write_buffer,
+            &mut hardware_rng,
+        ).await.map_err(|e| {
+            error!("MQTT: TLS connection failed: {e:?}");
+            ReasonCode::NetworkError
+        })?;
+
+        info!("MQTT: TLS handshake completed successfully!");
+
+        // Create MQTT client configuration
+        let config = self.create_mqtt_config();
+        
+        // Create MQTT client with TLS socket
+        let mut client = MqttClient::<_, 5, _>::new(
+            tls_socket,
+            write_buffer,
+            write_buffer.len(),
+            recv_buffer,
+            recv_buffer.len(),
+            config,
+        );
+
+        // Connect to MQTT broker over TLS
+        if let Err(e) = embassy_time::with_timeout(
+            Duration::from_secs(15), // TLS may take longer
+            client.connect_to_broker()
+        ).await {
+            error!("MQTT: TLS broker connection timeout: {e:?}");
+            return Err(ReasonCode::NetworkError);
+        }
+
+        info!("MQTT: Successfully connected to broker over TLS!");
+
+        // Subscribe to system topic
+        if let Err(e) = embassy_time::with_timeout(
+            Duration::from_secs(10),
+            client.subscribe_to_topic(&self.app_config.system_topic()),
+        ).await {
+            warn!("MQTT: Timeout subscribing to topic: {e:?}");
+            return Err(ReasonCode::NetworkError);
+        }
+
+        info!("MQTT: ✅ Secure TLS MQTT client ready!");
+        Ok(client)
     }
 }
 

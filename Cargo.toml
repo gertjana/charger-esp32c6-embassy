@@ -65,13 +65,20 @@ critical-section = "1.2.0"
 log = "0.4.27"
 embedded-io = "0.6.1"
 embedded-io-async = "0.6.1"
-embedded-tls = { git = "https://github.com/drogue-iot/embedded-tls", default-features = false, features = ["alloc"] }
 heapless = { version = "0.8.0", default-features = false }
 static_cell = "2.1.1"
 chrono = { version = "^0.4", default-features = false, features = ["serde", "alloc"] }
 
-# MQTT dependencies
-rust-mqtt = { version = "0.3.0", default-features = false }
+# ESP32-C6 Hardware crypto only (no_std compatible)
+sha2 = { version = "0.10", default-features = false }
+aes = { version = "0.8", default-features = false }
+rand_core = { version = "0.6", default-features = false }
+
+# MQTT dependencies - trying esp-mbedtls for better TLS compatibility
+rust-mqtt = { version = "0.3.0", default-features = false, features = []}
+embedded-tls = { version = "0.17.0", default-features = false, features = ["log"] }
+# Alternative TLS options to try:
+# esp-mbedtls = { version = "0.6", default-features = false }
 
 # OCPP dependencies
 ocpp_rs = "0.2.5"

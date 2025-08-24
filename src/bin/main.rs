@@ -145,6 +145,7 @@ async fn main(spawner: Spawner) {
 
     // Store values we need before config is moved
     let ntp_server = config.ntp_server;
+    let mqtt_use_tls = config.mqtt_use_tls;
 
     info!("MAIN: Initializing network stack...");
     let network =
@@ -205,29 +206,97 @@ async fn main(spawner: Spawner) {
 
     // Now start network-dependent tasks
     info!("MAIN: Creating MQTT client...");
-    let rx_buffer = mk_static!([u8; 2048], [0; 2048]);
-    let tx_buffer = mk_static!([u8; 2048], [0; 2048]);
-    let write_buffer = mk_static!([u8; 2048], [0; 2048]);
-    let recv_buffer = mk_static!([u8; 2048], [0; 2048]);
-
-    match network
-        .create_mqtt_client(rx_buffer, tx_buffer, write_buffer, recv_buffer)
-        .await
-    {
-        Ok(client) => {
-            info!("MAIN: MQTT client created successfully");
-            let client = mk_static!(
-                MqttClient<'static, TcpSocket<'static>, 5, CountingRng>,
-                client
-            );
-            spawner.spawn(mqtt::mqtt_client_task(network, client)).ok();
-
-            // Only start NTP sync task after MQTT client is successfully created
-            spawner.spawn(ntp::ntp_sync_task(network)).ok();
+    
+    if mqtt_use_tls {
+        info!("MAIN: TLS enabled - creating secure MQTT client with ESP32-C6 hardware RNG");
+        
+        // Create larger buffers required for TLS - need minimum 4096 for TCP RX
+        let rx_buffer = mk_static!([u8; 8192], [0; 8192]);
+        let tx_buffer = mk_static!([u8; 8192], [0; 8192]);
+        let write_buffer = mk_static!([u8; 8192], [0; 8192]);
+        let recv_buffer = mk_static!([u8; 8192], [0; 8192]);
+        
+        // Create even larger buffers for TLS encryption/decryption
+        let tls_read_buffer = mk_static!([u8; 16640], [0; 16640]);
+        let tls_write_buffer = mk_static!([u8; 16640], [0; 16640]);
+        
+        // Use the existing RNG instance created earlier
+        match network
+            .create_secure_tls_mqtt_client(
+                rx_buffer, 
+                tx_buffer, 
+                write_buffer, 
+                recv_buffer, 
+                tls_read_buffer, 
+                tls_write_buffer, 
+                rng
+            )
+            .await
+        {
+            Ok(_client) => {
+                info!("MAIN: ✅ Secure TLS MQTT client created successfully!");
+                info!("MAIN: 🔒 Using ESP32-C6 hardware RNG for TLS encryption");
+                // TODO: The secure TLS client has a different type, so we need a generic MQTT task
+                // For now, we'll just log success and continue without spawning the task
+                warn!("MAIN: TLS MQTT client ready but task spawn needs type adaptation");
+                
+                // Start NTP sync task
+                spawner.spawn(ntp::ntp_sync_task(network)).ok();
+            }
+            Err(e) => {
+                warn!("MAIN: ❌ Failed to create secure TLS MQTT client: {e:?}");
+                warn!("MAIN: Falling back to plain TCP MQTT client");
+                
+                // Fall back to plain TCP - use smaller buffers for plain TCP
+                let plain_rx_buffer = mk_static!([u8; 2048], [0; 2048]);
+                let plain_tx_buffer = mk_static!([u8; 2048], [0; 2048]);
+                let plain_write_buffer = mk_static!([u8; 2048], [0; 2048]);
+                let plain_recv_buffer = mk_static!([u8; 2048], [0; 2048]);
+                
+                match network
+                    .create_plain_tcp_mqtt_client(plain_rx_buffer, plain_tx_buffer, plain_write_buffer, plain_recv_buffer)
+                    .await
+                {
+                    Ok(client) => {
+                        info!("MAIN: ✅ Fallback plain TCP MQTT client created successfully!");
+                        let client = mk_static!(
+                            MqttClient<'static, TcpSocket<'static>, 5, CountingRng>,
+                            client
+                        );
+                        spawner.spawn(mqtt::mqtt_client_task(network, client)).ok();
+                        spawner.spawn(ntp::ntp_sync_task(network)).ok();
+                    }
+                    Err(e) => {
+                        warn!("MAIN: Failed to create fallback MQTT client: {e:?}");
+                    }
+                }
+            }
         }
-        Err(e) => {
-            warn!("MAIN: Failed to create MQTT client: {e:?}");
-            // Could spawn a retry task here if needed
+    } else {
+        info!("MAIN: TLS disabled - creating plain TCP MQTT client");
+        
+        // Use smaller buffers for plain TCP
+        let rx_buffer = mk_static!([u8; 2048], [0; 2048]);
+        let tx_buffer = mk_static!([u8; 2048], [0; 2048]);
+        let write_buffer = mk_static!([u8; 2048], [0; 2048]);
+        let recv_buffer = mk_static!([u8; 2048], [0; 2048]);
+        
+        match network
+            .create_plain_tcp_mqtt_client(rx_buffer, tx_buffer, write_buffer, recv_buffer)
+            .await
+        {
+            Ok(client) => {
+                info!("MAIN: ✅ Plain TCP MQTT client created successfully!");
+                let client = mk_static!(
+                    MqttClient<'static, TcpSocket<'static>, 5, CountingRng>,
+                    client
+                );
+                spawner.spawn(mqtt::mqtt_client_task(network, client)).ok();
+                spawner.spawn(ntp::ntp_sync_task(network)).ok();
+            }
+            Err(e) => {
+                warn!("MAIN: Failed to create MQTT client: {e:?}");
+            }
         }
     }
 

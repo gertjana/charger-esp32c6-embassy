@@ -25,4 +25,4 @@ sync_interval_minutes = 240
 timezone_offset_hours = 0
 
 [ocpp]
-heartbeat_interval = 30
+heartbeat_interval_seconds = 30

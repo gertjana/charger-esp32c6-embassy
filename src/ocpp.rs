@@ -209,7 +209,7 @@ pub async fn heartbeat_task() {
     info!("TASK: Started Network Heartbeat");
     Timer::after(Duration::from_secs(5)).await;
 
-    let ocpp_heartbeat_interval = Config::from_config().ocpp_heartbeat_interval;
+    let ocpp_heartbeat_interval_seconds = Config::from_config().ocpp_heartbeat_interval_seconds;
     loop {
         let heartbeat_req = &ocpp::heartbeat(&ocpp::next_ocpp_message_id());
         let message = parse::serialize_message(heartbeat_req).unwrap();
@@ -227,7 +227,7 @@ pub async fn heartbeat_task() {
         } else {
             warn!("OCPP: Heartbeat message too large for queue");
         }
-        Timer::after(Duration::from_secs(ocpp_heartbeat_interval.into())).await;
+        Timer::after(Duration::from_secs(ocpp_heartbeat_interval_seconds.into())).await;
     }
 }
 
