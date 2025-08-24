@@ -112,7 +112,7 @@
     "sorting_column": 0
   },
   "open_jobsets": [
-    "Export3D.kicad_jobset"
+    "Exports.kicad_jobset"
   ],
   "project": {
     "files": []
