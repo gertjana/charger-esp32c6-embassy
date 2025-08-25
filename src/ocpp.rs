@@ -90,7 +90,7 @@ pub fn stop_transaction(id: &str, transaction_id: i32, id_tag: &str) -> Message 
 pub fn status_notification(id: &str, status: ChargerState) -> Message {
     let status = match status {
         ChargerState::Available => ChargePointStatus::Available,
-        ChargerState::Occupied => ChargePointStatus::Preparing,
+        ChargerState::Preparing => ChargePointStatus::Preparing,
         ChargerState::Charging => ChargePointStatus::Charging,
         ChargerState::Faulted => ChargePointStatus::Faulted,
         ChargerState::Off => ChargePointStatus::Unavailable,
@@ -148,6 +148,8 @@ pub async fn authorize_task(charger: &'static Charger) {
                 }
             }
         }
+        // ignore any other messages
+        Timer::after(Duration::from_millis(100)).await; // Avoid busy loop
     }
 }
 
@@ -283,7 +285,7 @@ pub async fn transaction_handler_task(charger: &'static Charger) {
                         }
                     }
                 }
-                ChargerState::Occupied if output_events.contains(&OutputEvent::RemovePower) => {
+                ChargerState::Preparing if output_events.contains(&OutputEvent::RemovePower) => {
                     let id_tag = charger.get_id_tag().await;
                     let message = parse::serialize_message(&stop_transaction(
                         &next_ocpp_message_id(),
@@ -317,7 +319,7 @@ pub async fn transaction_handler_task(charger: &'static Charger) {
 
 /// Task to handle incoming OCPP responses from MQTT
 /// Note: as the payload differs for different message types, we would need a dynamic way of parsing json
-/// none of the no_std json libraries support this (requires heap allocation)
+/// none of the no_std json libraries support this (they all require heap allocation)
 /// so for now we just parse the messages as strings and use string matching
 #[embassy_executor::task]
 pub async fn response_handler_task(charger: &'static Charger) {

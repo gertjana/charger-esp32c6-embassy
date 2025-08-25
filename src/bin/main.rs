@@ -100,7 +100,7 @@ async fn main(spawner: Spawner) {
     );
 
     // SPI Cardreader setup
-    let spi_bus  = // mk_static!(Spi<Blocking>, 
+    let spi_bus  = // mk_static!(Spi<Blocking>,
         Spi::new(
             peripherals.SPI2,
             spi::master::Config::default()
@@ -113,7 +113,7 @@ async fn main(spawner: Spawner) {
         .with_miso(peripherals.GPIO20);
     // );
 
-    let sd_cs = //mk_static!(Output, 
+    let sd_cs = //mk_static!(Output,
         Output::new(peripherals.GPIO17, Level::High, OutputConfig::default());
     // );
 
@@ -123,8 +123,8 @@ async fn main(spawner: Spawner) {
 
     match cable_switch.is_low() {
         true => {
-            info!("MAIN: Cable is connected, setting initial state to Occupied");
-            charger.set_state(ChargerState::Occupied).await;
+            info!("MAIN: Cable is connected, setting initial state to Preparing");
+            charger.set_state(ChargerState::Preparing).await;
         }
         false => {
             info!("Cable is not connected, setting initial state to Available");
@@ -335,7 +335,7 @@ async fn charger_cable_task(mut button: Input<'static>) {
     }
 }
 
-/// Task to control the charger relay based on the charging state  
+/// Task to control the charger relay based on the charging state
 #[embassy_executor::task]
 async fn charger_relay_task(mut relay: Output<'static>) {
     info!("TASK: Started Charger relay control");

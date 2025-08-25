@@ -1,61 +1,77 @@
 vars: {
   d2-config: {
-    # sketch: true
+    sketch: true
     layout-engine: elk
+    theme-id: 300
   }
 }
-grid-columns: 1
-grid-gap: 0
+direction: left
 
-Transitions: {
-    style: {
-        stroke-width: 0
-    }
-}
-Transitions: |rust
-  fn transition(state: ChargerState, event: InputEvent): (ChargerState, [OutputEvent]) {
-    match (state, event) {
-      (Available, InsertCable) => (Occupied, []),
-      (Occupied, SwipeCard)    => (Authorizing, []),
-      (Authorizing, Accepted)  => (Charging, [Lock, ApplyPower]),
-      (Authorizing, Rejected)  => (Occupied, []),
-      (Charging, SwipeCard)    => (Occupied, [Unlock, RemovePower]),
-      (Occupied, RemoveCable)  => (Available, []),
-      (Faulted, Reset)         => (Available, [Unlock, RemovePower]),
-      _                        => (Faulted, [Unlock, RemovePower]), // Faults when no valid transition
+classes: {
+  happy: {
+    style {
+      stroke: green
+      stroke-width: 4
     }
   }
-|
+  sad: {
+    style {
+      stroke: red
+      stroke-width: 4
+    }
+  }
+}
 
 StateMachine: {
+  direction: left
   label: "Charger State Machine"
-  direction: "right"
-  Available: {
-    style: {fill: lightgreen}
-      icon: "./images/unlock_nocable.png"
-  }
-  Occupied: {
+
+  Preparing: {
     style: {fill: lightyellow}
       icon: "./images/inserted_unlocked.png"
   }
+
+  Authorizing: {
+    style: {fill: orange}
+    icon: "./images/inserted_unlocked.png"
+  }
+
+  StartTransaction {
+    style: {fill: lightblue}
+  }
+
+  StopTransaction {
+    style: {fill: lightcoral}
+  }
+
   Charging: {
     style: {fill: lightblue}
     icon: "./images/lock+charging.png"
   }
-  Faulted: {     
+
+  All States {}
+
+  Faulted: {
     style: {fill: pink}
       icon: "./images/unlock_wide.png"
   }
-  Authorizing: {
-    style: {fill: orange}  
-    icon: "./images/inserted_unlocked.png"
+  Available: {
+    style: {fill: lightgreen}
+      icon: "./images/unlock_nocable.png"
   }
-  Available -> Occupied: Insert Cable
-  Occupied -> Authorizing: Swipe Card
-  Authorizing -> Charging: Accepted
-  Authorizing -> Occupied: Rejected
-  Charging -> Occupied: Swipe Card
-  All States -> Faulted: No Valid Transition
-  Faulted -> Available: Reset
-}
 
+
+
+  All States -> Faulted: Error occured {class: sad}
+  Available -> Preparing: Cable Inserted {class: happy}
+  Preparing -> Available: Cable Removed {class: happy}
+  Preparing -> Authorizing: Card Swiped {class: happy}
+  Authorizing -> StartTransaction: Authorization Accepted {class: happy}
+  StartTransaction -> Charging: Transaction Accepted {class: happy}
+  StartTransaction -> Preparing: Transaction Rejected {class: sad}
+  Authorizing -> Preparing: Authorization Rejected {class: sad}
+  Charging -> StopTransaction: Card Swiped {class: happy}
+  StopTransaction -> Charging: Transaction Rejected {class: sad}
+  StopTransaction -> Preparing: Transaction Accepted {class: happy}
+  Faulted -> Available: Charger Resetted {class: happy}
+}

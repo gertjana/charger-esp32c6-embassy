@@ -12,13 +12,13 @@ classes: {
     style: {
       fill: lightgreen
     }
-  } 
+  }
   network_task: {
     style: {
       fill: lightgreen
     }
     height: 100
-  } 
+  }
   channel: {
     style: {
       fill: pink
@@ -96,7 +96,7 @@ classes: {
     style: {
       fill: "#eef0fd"
       stroke: "#eef0fd"
-    }    
+    }
   }
   code: {
     style: {
@@ -123,8 +123,8 @@ Main: Application Clients, Tasks and Channels {
     States {
       available.class: state-box
       available: {style: {fill: lightgreen}}
-      occupied.class: state-box
-      occupied: {width: 120; style: {fill: lightyellow}}
+      preparing.class: state-box
+      preparing: {width: 120; style: {fill: lightyellow}}
       authorizing.class: state-box
       authorizing: {width: 120; style: {fill: orange}}
       charging.class: state-box
@@ -157,7 +157,7 @@ Main: Application Clients, Tasks and Channels {
   NTP CLient.class: client
   NTP CLient.box: |md
     - handles communication with NTP Server
-    - uses local timer for time since last sync point 
+    - uses local timer for time since last sync point
   |
   NTP Sync.class: task
   NTP Sync.box: |md
@@ -357,7 +357,7 @@ Main: Application Clients, Tasks and Channels {
   State PubSub Channel -> Hardware.Lock Handler -> Hardware.Lock
   State PubSub Channel -> Hardware.Led Handler -> Hardware.LED
   State PubSub Channel -> Hardware.Relais Handler -> Hardware.Relais
-  State In Channel -> State Machine Handler 
+  State In Channel -> State Machine Handler
   State Machine Handler -> State PubSub Channel
   Hardware.RFID -> Hardware.Swipe Handler -> State In Channel
   Hardware.Cable -> Hardware.Cable Detection Handler -> State In Channel
