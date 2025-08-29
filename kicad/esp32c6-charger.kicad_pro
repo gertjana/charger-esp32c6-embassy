@@ -52,16 +52,7 @@
         }
       },
       "diff_pair_dimensions": [],
-      "drc_exclusions": [
-        [
-          "text_height|146304000|118110000|b363df41-8a34-41fe-8887-d90067d360b0|00000000-0000-0000-0000-000000000000",
-          ""
-        ],
-        [
-          "text_height|149606000|117094000|14e365fd-176e-4bcf-82f6-838d7c1dfdc7|00000000-0000-0000-0000-000000000000",
-          ""
-        ]
-      ],
+      "drc_exclusions": [],
       "meta": {
         "version": 2
       },
@@ -235,44 +226,7 @@
     "equivalence_files": []
   },
   "erc": {
-    "erc_exclusions": [
-      [
-        "multiple_net_names|1651000|254000|0a2efe59-2e67-4103-8e3c-7de0a9096a04|412fe2d1-4c6a-4b78-9dc4-c6aee9552e81|/c75217aa-777e-405b-8d87-1e76fa2c5fc2|/c75217aa-777e-405b-8d87-1e76fa2c5fc2|/c75217aa-777e-405b-8d87-1e76fa2c5fc2",
-        ""
-      ],
-      [
-        "unconnected_wire_endpoint|2527300|1333500|043bf0a0-d010-40bd-ac9c-476741ad9da2|00000000-0000-0000-0000-000000000000|/c75217aa-777e-405b-8d87-1e76fa2c5fc2||",
-        ""
-      ],
-      [
-        "unconnected_wire_endpoint|2527300|977900|ac7c4578-b384-48a8-a3ae-b585672acd7e|00000000-0000-0000-0000-000000000000|/c75217aa-777e-405b-8d87-1e76fa2c5fc2||",
-        ""
-      ],
-      [
-        "unconnected_wire_endpoint|2540000|1371600|a03284ab-9a13-4555-a162-451fa032956c|00000000-0000-0000-0000-000000000000|/c75217aa-777e-405b-8d87-1e76fa2c5fc2||",
-        ""
-      ],
-      [
-        "unconnected_wire_endpoint|2565400|1320800|338ecf01-c861-4f98-910c-dfbed8c99a02|00000000-0000-0000-0000-000000000000|/c75217aa-777e-405b-8d87-1e76fa2c5fc2||",
-        ""
-      ],
-      [
-        "unconnected_wire_endpoint|2578100|990600|bd1803ba-a0c6-46bb-a48c-90fde28a635a|00000000-0000-0000-0000-000000000000|/c75217aa-777e-405b-8d87-1e76fa2c5fc2||",
-        ""
-      ],
-      [
-        "unconnected_wire_endpoint|2590800|1346200|b2721b76-3589-4d9c-af26-13b90f1162bb|00000000-0000-0000-0000-000000000000|/c75217aa-777e-405b-8d87-1e76fa2c5fc2||",
-        ""
-      ],
-      [
-        "unconnected_wire_endpoint|2628900|1333500|e5cd50b0-cce2-493e-a3cb-92fc67bb649a|00000000-0000-0000-0000-000000000000|/c75217aa-777e-405b-8d87-1e76fa2c5fc2||",
-        ""
-      ],
-      [
-        "unconnected_wire_endpoint|2628900|990600|df59cdef-3597-4406-8254-c6628ab500cf|00000000-0000-0000-0000-000000000000|/c75217aa-777e-405b-8d87-1e76fa2c5fc2||",
-        ""
-      ]
-    ],
+    "erc_exclusions": [],
     "meta": {
       "version": 0
     },
@@ -486,6 +440,7 @@
       "single_global_label": "ignore",
       "unannotated": "error",
       "unconnected_wire_endpoint": "warning",
+      "undefined_netclass": "error",
       "unit_value_mismatch": "error",
       "unresolved_variable": "error",
       "wire_dangling": "error"
@@ -532,7 +487,7 @@
       "gencad": "",
       "idf": "",
       "netlist": "",
-      "plot": "",
+      "plot": "gerbers/",
       "pos_files": "",
       "specctra_dsn": "",
       "step": "esp32c6-charger.stl",
