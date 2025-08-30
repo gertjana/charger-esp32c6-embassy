@@ -95,7 +95,7 @@
 
 ```rust
 match operation().await {
-    Ok(result) => info!("Operation successful: {}", result),
+    Ok(result) => info!("Operation successful: {result}"),
     Err(e) => warn!("Operation failed: {:?}", e),
 }
 ```
