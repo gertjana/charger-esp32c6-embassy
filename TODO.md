@@ -3,8 +3,8 @@
 ## Current
 
 ### Tasks
+
 * Include Accept/Reject from Start and StopTransaction responses into the statemachine
-* TLS Connection for MQTT
 
 ### Bugs
 
@@ -30,6 +30,8 @@
 * wont do ~~Proper (typesafe) Response Handler~~
 * done ~~Implement code for RFID-RC522 SPI Module to do proper charge card swipes~~
 * wont do ~~Research if possible: Pass on id_tag with InputEvent~~
+* wont do ~~TLS Connection for MQTT~~
+
 
 ### bugs
 
