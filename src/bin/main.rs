@@ -18,10 +18,18 @@ use esp_hal::{
     delay::Delay,
     gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull},
     i2c::master::{Config as I2cConfig, I2c},
+    rmt::Rmt,
     spi::{self, master::Spi},
     time::Rate,
     timer::{systimer::SystemTimer, timg::TimerGroup},
     Blocking,
+};
+
+use esp_hal_smartled::{smart_led_buffer, SmartLedsAdapter};
+use smart_leds::{
+    brightness,
+    colors::{BLUE, GREEN, ORANGE, RED, WHITE},
+    SmartLedsWrite as _, RGB8,
 };
 
 use log::{info, warn};
@@ -89,13 +97,19 @@ async fn main(spawner: Spawner) {
             }
         };
 
-    // GPIO Setup
-    let onboard_led_pin = Output::new(peripherals.GPIO15, Level::Low, Default::default());
+    let charger_led = mk_static!(
+        SmartLedsAdapter<esp_hal::rmt::ConstChannelAccess<esp_hal::rmt::Tx, 0>, 25>,
+        {
+            let frequency = Rate::from_mhz(80);
+            let rmt = Rmt::new(peripherals.RMT, frequency).expect("Failed to initialize RMT0");
+            SmartLedsAdapter::new(rmt.channel0, peripherals.GPIO0, smart_led_buffer!(1))
+        }
+    );
 
     let cable_lock_pin = Output::new(peripherals.GPIO21, Level::Low, Default::default());
 
     let cable_switch = Input::new(
-        peripherals.GPIO0,
+        peripherals.GPIO1,
         InputConfig::default().with_pull(Pull::Up),
     );
 
@@ -156,9 +170,7 @@ async fn main(spawner: Spawner) {
     info!("MAIN: Network connected successfully");
 
     // Start hardware-related tasks (can run independently of network)
-    spawner
-        .spawn(charger_led_task(onboard_led_pin, charger))
-        .ok();
+    spawner.spawn(charger_led_task(charger_led, charger)).ok();
 
     spawner.spawn(cable_lock_task(cable_lock_pin)).ok();
 
@@ -273,39 +285,97 @@ async fn main(spawner: Spawner) {
     }
 }
 
-/// Task to control the charger LED based on the charging state
+/// Maps charger states to corresponding LED colors
+fn get_led_color_for_state(state: ChargerState) -> Option<RGB8> {
+    match state {
+        ChargerState::Off => None,                 // LED off
+        ChargerState::Available => Some(GREEN),    // Green = Ready to charge
+        ChargerState::Preparing => Some(WHITE),    // White = Preparing to charge
+        ChargerState::Charging => Some(BLUE),      // Blue = Charging in progress
+        ChargerState::Authorizing => Some(ORANGE), // Orange = Authorizing user
+        ChargerState::Faulted => Some(RED),        // Red = Error/fault condition
+    }
+}
+
+/// Task to control the WS2812B RGB LED based on the charging state
 #[embassy_executor::task]
-async fn charger_led_task(mut led_pin: Output<'static>, charger: &'static Charger) {
-    info!("TASK: Started Charger Led Charging Indicator");
+async fn charger_led_task(
+    charger_led: &'static mut SmartLedsAdapter<
+        esp_hal::rmt::ConstChannelAccess<esp_hal::rmt::Tx, 0>,
+        25,
+    >,
+    charger: &'static Charger,
+) {
+    info!("TASK: Started WS2812B RGB LED Charger Status Indicator");
+
+    // Set initial LED color based on current charger state
+    let initial_state = charger.get_state().await;
+    info!(
+        "LED: Setting initial color for state: {}",
+        initial_state.as_str()
+    );
+
+    match get_led_color_for_state(initial_state) {
+        Some(color) => {
+            let brightness_level = 20; // Adjust brightness (0-255)
+            info!(
+                "LED: Initial color RGB({}, {}, {}) for state: {}",
+                color.r,
+                color.g,
+                color.b,
+                initial_state.as_str()
+            );
+
+            if let Err(e) = charger_led.write(brightness([color].into_iter(), brightness_level)) {
+                warn!("LED: Failed to set initial color: {e:?}");
+            }
+        }
+        None => {
+            // Turn off LED for Off state
+            info!(
+                "LED: Turning off LED for initial state: {}",
+                initial_state.as_str()
+            );
+            let off_color = RGB8::new(0, 0, 0);
+            if let Err(e) = charger_led.write([off_color].into_iter()) {
+                warn!("LED: Failed to turn off LED initially: {e:?}");
+            }
+        }
+    }
 
     let mut subscriber = charger::STATE_PUBSUB.subscriber().unwrap();
-
-    // Set initial LED state based on current charger state
-    let initial_state = charger.get_state().await;
-    if initial_state == ChargerState::Charging {
-        info!("LED : Setting LED high for initial charging state");
-        led_pin.set_high();
-    } else {
-        info!(
-            "LED : Setting LED low for initial state: {}",
-            initial_state.as_str()
-        );
-        led_pin.set_low();
-    }
 
     loop {
         // Wait for state changes via PubSub
         if let embassy_sync::pubsub::WaitResult::Message((current_state, _)) =
             subscriber.next_message().await
         {
-            match current_state {
-                ChargerState::Charging => {
-                    info!("LED: Setting LED high for charging state");
-                    led_pin.set_low();
+            info!("LED: Charger state changed to: {}", current_state.as_str());
+
+            match get_led_color_for_state(current_state) {
+                Some(color) => {
+                    let brightness_level = 20; // Adjust brightness (0-255)
+                    info!(
+                        "LED: Setting color RGB({}, {}, {}) for state: {}",
+                        color.r,
+                        color.g,
+                        color.b,
+                        current_state.as_str()
+                    );
+
+                    if let Err(e) =
+                        charger_led.write(brightness([color].into_iter(), brightness_level))
+                    {
+                        warn!("LED: Failed to set color: {e:?}");
+                    }
                 }
-                _ => {
-                    info!("LED: Setting LED low for state: {}", current_state.as_str());
-                    led_pin.set_high();
+                None => {
+                    // Turn off LED for Off state
+                    info!("LED: Turning off LED for state: {}", current_state.as_str());
+                    let off_color = RGB8::new(0, 0, 0);
+                    if let Err(e) = charger_led.write([off_color].into_iter()) {
+                        warn!("LED: Failed to turn off LED: {e:?}");
+                    }
                 }
             }
         }

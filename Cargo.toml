@@ -62,11 +62,8 @@ smoltcp = { version = "0.12.0", default-features = false, features = [
 
 # Other dependencies
 critical-section = "1.2.0"
-log = "0.4.27"
-# embedded-io = "0.6.1"
-# embedded-io-async = "0.6.1"
-# embedded-tls = { git = "https://github.com/drogue-iot/embedded-tls", default-features = false, features = ["alloc"] }
-heapless = { version = "0.8.0", default-features = false }
+log = "0.4.28"
+heapless = { version = "0.9.1", default-features = false }
 static_cell = "2.1.1"
 chrono = { version = "^0.4", default-features = false, features = ["serde", "alloc"] }
 
@@ -84,6 +81,10 @@ embedded-hal-async = "1.0.0"
 # tinybmp = "0.6.0"
 mfrc522 = "0.8.0"
 embedded-hal-bus = "0.3.0"
+
+# WS2812B RGB LED dependencies
+esp-hal-smartled = { path = "../esp-hal-community/esp-hal-smartled", version = "0.16.0", default-features = false, features = ["esp32c6"] }
+smart-leds = "0.4.0"
 
 [profile.dev]
 # Rust debug is too slow.
