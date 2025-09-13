@@ -8497,7 +8497,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "BC817"
+		(property "Value" "BC337"
 			(at 106.934 90.932 0)
 			(effects
 				(font
@@ -8506,7 +8506,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Package_TO_SOT_SMD:SOT-23"
+		(property "Footprint" "Package_TO_SOT_THT:TO-92"
 			(at 106.68 93.345 0)
 			(effects
 				(font
@@ -8799,7 +8799,7 @@
 				(justify right)
 			)
 		)
-		(property "Footprint" "Diode_SMD:D_SOD-323"
+		(property "Footprint" "Diode_THT:D_DO-35_SOD27_P7.62mm_Horizontal"
 			(at 158.115 72.39 0)
 			(effects
 				(font
@@ -9309,7 +9309,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "BC817"
+		(property "Value" "BC337"
 			(at 119.38 76.1999 0)
 			(effects
 				(font
@@ -9318,7 +9318,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Package_TO_SOT_SMD:SOT-23"
+		(property "Footprint" "Package_TO_SOT_THT:TO-92"
 			(at 119.38 76.835 0)
 			(effects
 				(font
