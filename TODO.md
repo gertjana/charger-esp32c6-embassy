@@ -8,7 +8,6 @@
 
 ### Bugs
 
-* Don't go to Faulted if no valid transition is found, keep the current state, no outputevents
 * probably same/similar issue:
   * After running for a while (hours), the time shown on the display stops (app halts)
   * WHen time is not synced initially, the next sync halts the application or panics
@@ -31,7 +30,7 @@
 * done ~~Implement code for RFID-RC522 SPI Module to do proper charge card swipes~~
 * wont do ~~Research if possible: Pass on id_tag with InputEvent~~
 * wont do ~~TLS Connection for MQTT~~
-
+* done ~~Don't go to Faulted if no valid transition is found, keep the current state, no outputevents~~
 
 ### bugs
 
