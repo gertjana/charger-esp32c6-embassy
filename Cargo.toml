@@ -83,7 +83,8 @@ mfrc522 = "0.8.0"
 embedded-hal-bus = "0.3.0"
 
 # WS2812B RGB LED dependencies
-esp-hal-smartled = { path = "../esp-hal-community/esp-hal-smartled", version = "0.16.0", default-features = false, features = ["esp32c6"] }
+#esp-hal-smartled = { path = "../esp-hal-community/esp-hal-smartled", version = "0.16.0", default-features = false, features = ["esp32c6"] }
+esp-hal-smartled = { git = "https://github.com/esp-rs/esp-hal-community", default-features = false, features = ["esp32c6"] }
 smart-leds = "0.4.0"
 
 [profile.dev]
