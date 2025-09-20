@@ -52,7 +52,60 @@
         }
       },
       "diff_pair_dimensions": [],
-      "drc_exclusions": [],
+      "drc_exclusions": [
+        [
+          "silk_edge_clearance|106808295|74379000|dea9f22d-a50f-4881-842c-937c2408673d|f98c4270-c12f-45e1-a904-222249f69d03",
+          ""
+        ],
+        [
+          "silk_edge_clearance|122810295|74379000|dea9f22d-a50f-4881-842c-937c2408673d|c6120aac-f624-460a-a43b-efbb8248bc4a",
+          ""
+        ],
+        [
+          "silk_edge_clearance|130242000|124219000|518d4467-e6e6-4c54-88c4-654f89932f34|4606f478-0721-4a41-90a5-7c53ae8c42e2",
+          ""
+        ],
+        [
+          "silk_edge_clearance|134697638|124379000|518d4467-e6e6-4c54-88c4-654f89932f34|19e0f113-5905-4dbf-b94e-052faf622bb1",
+          ""
+        ],
+        [
+          "silk_edge_clearance|143696000|124379000|518d4467-e6e6-4c54-88c4-654f89932f34|9aef60eb-9978-47c6-b428-2b0c1064b604",
+          ""
+        ],
+        [
+          "silk_edge_clearance|83948295|74379000|dea9f22d-a50f-4881-842c-937c2408673d|bcd4a069-11a3-4e37-ba70-4615c60583ec",
+          ""
+        ],
+        [
+          "silk_over_copper|115696000|110602000|ea2c35c0-6f00-4937-94bb-e2265e64c76e|00000000-0000-0000-0000-000000000000",
+          ""
+        ],
+        [
+          "silk_over_copper|116566026|95498485|14cb2820-e6ef-469e-ba80-f0297613c5cf|00000000-0000-0000-0000-000000000000",
+          ""
+        ],
+        [
+          "silk_over_copper|116728000|117167000|ac5a8d53-5a0d-4068-bb9c-40a817efb91d|00000000-0000-0000-0000-000000000000",
+          ""
+        ],
+        [
+          "silk_over_copper|130302000|117985585|ab737e13-5ebf-466a-8a96-92acabbd60fa|00000000-0000-0000-0000-000000000000",
+          ""
+        ],
+        [
+          "silk_over_copper|148082000|120529079|c53483ec-e464-4638-9ce8-cbaf3dea5d37|00000000-0000-0000-0000-000000000000",
+          ""
+        ],
+        [
+          "silk_overlap|119418880|101859914|6e89e887-6de0-4855-ae60-b4998e16faf3|f4ec909a-5c5d-407b-90ed-f0492928af8f",
+          ""
+        ],
+        [
+          "silk_overlap|126611428|89867000|073da127-898e-4564-af1d-26e077e56d59|8aaee5ad-ade1-4a04-b57a-bfed7d3645f7",
+          ""
+        ]
+      ],
       "meta": {
         "version": 2
       },
@@ -90,9 +143,9 @@
         "missing_footprint": "warning",
         "net_conflict": "warning",
         "nonmirrored_text_on_back_layer": "warning",
-        "npth_inside_courtyard": "ignore",
+        "npth_inside_courtyard": "warning",
         "padstack": "warning",
-        "pth_inside_courtyard": "ignore",
+        "pth_inside_courtyard": "warning",
         "shorting_items": "error",
         "silk_edge_clearance": "warning",
         "silk_over_copper": "warning",
@@ -487,7 +540,7 @@
       "gencad": "",
       "idf": "",
       "netlist": "",
-      "plot": "gerbers/",
+      "plot": "gerbers",
       "pos_files": "",
       "specctra_dsn": "",
       "step": "esp32c6-charger.stl",

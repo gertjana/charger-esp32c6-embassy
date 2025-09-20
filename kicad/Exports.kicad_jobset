@@ -116,6 +116,7 @@
         "include_netlist_attributes": true,
         "layers": [
           "B.Cu",
+          "B.Mask",
           "B.Paste",
           "B.SilkS",
           "B.Adhes",
@@ -151,6 +152,7 @@
           "In2.Cu",
           "In1.Cu",
           "F.Cu",
+          "F.Mask",
           "F.Paste",
           "F.SilkS",
           "F.Adhes",
@@ -218,6 +220,16 @@
         "use_background_color": true
       },
       "type": "sch_export_plot_pdf"
+    },
+    {
+      "description": "Zip Gerber files with current date",
+      "id": "zip-gerbers-job",
+      "settings": {
+        "command": "./zip_gerbers.sh",
+        "description": "Create dated zip archive of Gerber files",
+        "working_directory": ""
+      },
+      "type": "run_command"
     }
   ],
   "meta": {
