@@ -13,7 +13,7 @@ pub static STATE_PUBSUB: PubSubChannel<
     CriticalSectionRawMutex,
     (ChargerState, heapless::Vec<OutputEvent, 2>),
     10,
-    6,
+    7,
     4,
 > = PubSubChannel::new();
 
@@ -27,6 +27,7 @@ pub enum InputEvent {
     SwipeDetected,
     Accepted,
     Rejected,
+    AuthorizationTimeout,
     None,
 }
 
@@ -171,6 +172,12 @@ impl Charger {
                 ChargerState::Preparing,
                 heapless::Vec::from_slice(&[OutputEvent::ShowRejected]).unwrap(),
             ),
+            (ChargerState::Authorizing, InputEvent::AuthorizationTimeout) => {
+                warn!(
+                    "CHGR: Authorization timeout - backend not reachable, returning to Preparing"
+                );
+                (ChargerState::Preparing, heapless::Vec::new())
+            }
             (ChargerState::Charging, InputEvent::SwipeDetected) => {
                 let output_events =
                     heapless::Vec::from_slice(&[OutputEvent::RemovePower, OutputEvent::Unlock])
@@ -230,6 +237,65 @@ pub async fn statemachine_handler_task(charger: &'static Charger) {
             );
         }
 
+        Timer::after(Duration::from_millis(100)).await;
+    }
+}
+
+/// Task to handle authorization timeout when backend is not reachable
+/// As Authorizing state is the only one that requires a backend response to continue,
+/// we need to handle it in case the backend does not respond in a timely manner.
+#[embassy_executor::task]
+pub async fn authorization_timeout_task(charger: &'static Charger) {
+    info!("TASK: Started Authorization Timeout Monitor");
+
+    let mut subscriber = STATE_PUBSUB.subscriber().unwrap();
+
+    loop {
+        // Wait for state changes via PubSub
+        if let embassy_sync::pubsub::WaitResult::Message((current_state, _)) =
+            subscriber.next_message().await
+        {
+            if current_state == ChargerState::Authorizing {
+                info!("CHGR: Started authorization timeout countdown (5 seconds)");
+
+                // Start a 5-second timeout
+                let timeout_result = embassy_time::with_timeout(
+                    Duration::from_secs(5),
+                    wait_for_authorization_response(charger),
+                )
+                .await;
+
+                match timeout_result {
+                    Ok(_) => {
+                        // Authorization response received before timeout
+                        info!("CHGR: Authorization response received within timeout");
+                    }
+                    Err(_) => {
+                        // Timeout occurred - send timeout event
+                        info!("CHGR: Authorization timeout reached, sending timeout event");
+                        if STATE_IN_CHANNEL
+                            .try_send(InputEvent::AuthorizationTimeout)
+                            .is_err()
+                        {
+                            warn!("CHGR: Failed to send timeout event, channel full");
+                        }
+                    }
+                }
+            }
+        }
+
+        Timer::after(Duration::from_millis(100)).await;
+    }
+}
+
+/// Helper function that waits for the charger to leave the Authorizing state
+async fn wait_for_authorization_response(charger: &Charger) {
+    loop {
+        let current_state = charger.get_state().await;
+        if current_state != ChargerState::Authorizing {
+            // State changed from Authorizing, authorization response was processed
+            break;
+        }
         Timer::after(Duration::from_millis(100)).await;
     }
 }

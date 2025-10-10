@@ -184,6 +184,10 @@ async fn main(spawner: Spawner) {
         .spawn(charger::statemachine_handler_task(charger))
         .ok();
 
+    spawner
+        .spawn(charger::authorization_timeout_task(charger))
+        .ok();
+
     // Perform initial NTP time synchronization
     info!("MAIN: Synchronizing time with NTP server...");
     let mut sync_attempts = 0;
