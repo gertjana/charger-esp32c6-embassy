@@ -7,22 +7,14 @@ use core::{
     str,
 };
 use embassy_executor::Spawner;
-use embassy_net::{tcp::TcpSocket, IpAddress, StackResources};
+use embassy_net::{IpAddress, StackResources};
 use embassy_time::{Duration, Timer};
 use esp_hal::timer::timg::TimerGroup;
 use esp_wifi::{
     wifi::{ClientConfiguration, Configuration, WifiController, WifiEvent, WifiState},
     EspWifiController,
 };
-use log::{error, info, warn};
-use rust_mqtt::{
-    client::{client::MqttClient, client_config::ClientConfig},
-    packet::v5::{publish_packet::QualityOfService::QoS1, reason_codes::ReasonCode},
-    utils::rng_generator::CountingRng,
-};
-
-const BUFFER_SIZE: usize = 2048;
-const DEFAULT_TIMEOUT_MS: u64 = 200;
+use log::{error, info};
 
 pub struct NetworkStack {
     pub stack: &'static embassy_net::Stack<'static>,
@@ -74,7 +66,7 @@ impl NetworkStack {
         info!("NETW: Waiting to get IP address...");
         loop {
             if let Some(config) = self.stack.config_v4() {
-                info!("Got IP: {}", config.address);
+                info!("NETW: Got IP: {}", config.address);
                 break;
             }
             Timer::after(Duration::from_millis(500)).await;
@@ -104,134 +96,6 @@ impl NetworkStack {
                 error!("NETW: Failed to resolve DNS for {hostname}");
                 None
             }
-        }
-    }
-
-    pub fn create_mqtt_config(&self) -> ClientConfig<'static, 5, CountingRng> {
-        let mut config = ClientConfig::new(
-            rust_mqtt::client::client_config::MqttVersion::MQTTv5,
-            CountingRng(20000),
-        );
-
-        config.add_max_subscribe_qos(rust_mqtt::packet::v5::publish_packet::QualityOfService::QoS1);
-        config.add_client_id(self.app_config.mqtt_client_id);
-        config.max_packet_size = 2048;
-        config
-    }
-
-    pub async fn create_mqtt_client<'a>(
-        &self,
-        rx_buffer: &'a mut [u8],
-        tx_buffer: &'a mut [u8],
-        write_buffer: &'a mut [u8],
-        recv_buffer: &'a mut [u8],
-    ) -> Result<MqttClient<'a, TcpSocket<'a>, 5, CountingRng>, ReasonCode> {
-        let address = self
-            .resolve_dns(self.app_config.mqtt_broker)
-            .await
-            .ok_or(ReasonCode::NetworkError)?;
-
-        let mut socket = TcpSocket::new(*self.stack, rx_buffer, tx_buffer);
-        let remote_endpoint = (address, self.app_config.mqtt_port);
-
-        // Use a timeout for the socket connection to prevent indefinite blocking
-        if let Err(_e) =
-            embassy_time::with_timeout(Duration::from_secs(10), socket.connect(remote_endpoint))
-                .await
-        {
-            warn!("NETW: Timeout connecting to broker");
-            return Err(ReasonCode::NetworkError);
-        }
-
-        let config = self.create_mqtt_config();
-        let mut client = MqttClient::<_, 5, _>::new(
-            socket,
-            write_buffer,
-            write_buffer.len(),
-            recv_buffer,
-            recv_buffer.len(),
-            config,
-        );
-
-        if let Err(_e) =
-            embassy_time::with_timeout(Duration::from_secs(10), client.connect_to_broker()).await
-        {
-            warn!("NETW: Timeout during broker connection handshake");
-            return Err(ReasonCode::NetworkError);
-        }
-
-        if let Err(_e) = embassy_time::with_timeout(
-            Duration::from_secs(10),
-            client.subscribe_to_topic(&self.app_config.system_topic()),
-        )
-        .await
-        {
-            warn!("NETW: Timeout subscribing to topic");
-            return Err(ReasonCode::NetworkError);
-        }
-
-        Ok(client)
-    }
-
-    pub async fn send_message_with_client(
-        &self,
-        client: &mut MqttClient<'_, TcpSocket<'_>, 5, CountingRng>,
-        message: &[u8],
-    ) -> Result<(), ReasonCode> {
-        let topic = self.app_config.charger_topic();
-        info!(
-            "MQTT: Sending message to topic {} (size: {} bytes): {}",
-            topic,
-            message.len(),
-            str::from_utf8(message).unwrap_or("<invalid UTF-8>")
-        );
-        match client.send_message(&topic, message, QoS1, true).await {
-            Ok(()) => {
-                info!("MQTT: Message sent successfully");
-                Ok(())
-            }
-            Err(e) => {
-                warn!("MQTT: Failed to send message: {e:?}");
-                Err(e)
-            }
-        }
-    }
-
-    pub async fn receive_message_with_client(
-        &self,
-        client: &mut MqttClient<'_, TcpSocket<'_>, 5, CountingRng>,
-    ) -> Result<Option<heapless::Vec<u8, BUFFER_SIZE>>, ReasonCode> {
-        match embassy_time::with_timeout(
-            Duration::from_millis(DEFAULT_TIMEOUT_MS),
-            client.receive_message(),
-        )
-        .await
-        {
-            Ok(Ok((topic, payload))) => {
-                let mut v = heapless::Vec::<u8, BUFFER_SIZE>::new();
-                if v.extend_from_slice(payload).is_ok() {
-                    info!(
-                        "MQTT: Received message from topic {}: {}",
-                        topic,
-                        str::from_utf8(payload).unwrap_or("<invalid UTF-8>")
-                    );
-                    Ok(Some(v))
-                } else {
-                    warn!(
-                        "MQTT: Received message too large for buffer (size: {})",
-                        payload.len()
-                    );
-                    Ok(None)
-                }
-            }
-            Ok(Err(e)) => match e {
-                ReasonCode::NetworkError => Ok(None),
-                _ => {
-                    error!("MQTT: Unexpected error receiving message: {e:?}");
-                    Err(e)
-                }
-            },
-            Err(_) => Ok(None),
         }
     }
 }

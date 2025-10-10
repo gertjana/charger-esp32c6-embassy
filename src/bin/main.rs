@@ -222,10 +222,7 @@ async fn main(spawner: Spawner) {
     let write_buffer = mk_static!([u8; 2048], [0; 2048]);
     let recv_buffer = mk_static!([u8; 2048], [0; 2048]);
 
-    match network
-        .create_mqtt_client(rx_buffer, tx_buffer, write_buffer, recv_buffer)
-        .await
-    {
+    match mqtt::create_mqtt_client(network, rx_buffer, tx_buffer, write_buffer, recv_buffer).await {
         Ok(client) => {
             info!("MAIN: MQTT client created successfully");
             let client = mk_static!(
