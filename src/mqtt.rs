@@ -12,14 +12,17 @@ use rust_mqtt::{
 use crate::{config::Config, network::NetworkStack};
 
 const BUFFER_SIZE: usize = 2048;
-const DEFAULT_TIMEOUT_MS: u64 = 200;
+const DEFAULT_TIMEOUT_MS: u64 = 100;
 
 /// Message queues for MQTT messages
-pub static MQTT_SEND_CHANNEL: Channel<CriticalSectionRawMutex, heapless::Vec<u8, 2048>, 5> =
+pub static MQTT_SEND_CHANNEL: Channel<CriticalSectionRawMutex, heapless::Vec<u8, BUFFER_SIZE>, 5> =
     Channel::new();
 
-pub static MQTT_RECEIVE_CHANNEL: Channel<CriticalSectionRawMutex, heapless::Vec<u8, 2048>, 5> =
-    Channel::new();
+pub static MQTT_RECEIVE_CHANNEL: Channel<
+    CriticalSectionRawMutex,
+    heapless::Vec<u8, BUFFER_SIZE>,
+    5,
+> = Channel::new();
 
 /// Create MQTT configuration for the given app config
 pub fn create_mqtt_config(app_config: &Config) -> ClientConfig<'static, 5, CountingRng> {
@@ -30,7 +33,7 @@ pub fn create_mqtt_config(app_config: &Config) -> ClientConfig<'static, 5, Count
 
     config.add_max_subscribe_qos(rust_mqtt::packet::v5::publish_packet::QualityOfService::QoS1);
     config.add_client_id(app_config.mqtt_client_id);
-    config.max_packet_size = 2048;
+    config.max_packet_size = BUFFER_SIZE as u32;
     config
 }
 
@@ -162,7 +165,7 @@ pub async fn mqtt_client_task(
     loop {
         // Use a timeout to prevent blocking indefinitely
         match embassy_time::with_timeout(
-            Duration::from_millis(100),
+            Duration::from_millis(DEFAULT_TIMEOUT_MS),
             receive_message_with_client(client),
         )
         .await
@@ -199,6 +202,6 @@ pub async fn mqtt_client_task(
             }
         }
 
-        Timer::after(Duration::from_millis(50)).await;
+        Timer::after(Duration::from_millis(DEFAULT_TIMEOUT_MS)).await;
     }
 }

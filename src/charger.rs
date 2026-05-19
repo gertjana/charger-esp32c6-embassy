@@ -243,7 +243,7 @@ pub async fn statemachine_handler_task(charger: &'static Charger) {
 
 /// Task to handle authorization timeout when backend is not reachable
 /// As Authorizing state is the only one that requires a backend response to continue,
-/// we need to handle it in case the backend does not respond in a timely manner.
+/// we need to handle the case where the backend does not respond in a timely manner.
 #[embassy_executor::task]
 pub async fn authorization_timeout_task(charger: &'static Charger) {
     info!("TASK: Started Authorization Timeout Monitor");
@@ -251,14 +251,12 @@ pub async fn authorization_timeout_task(charger: &'static Charger) {
     let mut subscriber = STATE_PUBSUB.subscriber().unwrap();
 
     loop {
-        // Wait for state changes via PubSub
         if let embassy_sync::pubsub::WaitResult::Message((current_state, _)) =
             subscriber.next_message().await
         {
             if current_state == ChargerState::Authorizing {
                 info!("CHGR: Started authorization timeout countdown (5 seconds)");
 
-                // Start a 5-second timeout
                 let timeout_result = embassy_time::with_timeout(
                     Duration::from_secs(5),
                     wait_for_authorization_response(charger),

@@ -7,7 +7,7 @@ use core::{
     str,
 };
 use embassy_executor::Spawner;
-use embassy_net::{IpAddress, StackResources};
+use embassy_net::{IpAddress, Ipv4Address, StackResources};
 use embassy_time::{Duration, Timer};
 use esp_hal::timer::timg::TimerGroup;
 use esp_wifi::{
@@ -15,6 +15,7 @@ use esp_wifi::{
     EspWifiController,
 };
 use log::{error, info};
+use smoltcp::wire::DnsQueryType;
 
 pub struct NetworkStack {
     pub stack: &'static embassy_net::Stack<'static>,
@@ -73,7 +74,7 @@ impl NetworkStack {
         }
     }
 
-    pub fn get_ip_address(&self) -> Option<embassy_net::Ipv4Address> {
+    pub fn get_ip_address(&self) -> Option<Ipv4Address> {
         if let Some(config) = self.stack.config_v4() {
             Some(config.address.address())
         } else {
@@ -86,10 +87,7 @@ impl NetworkStack {
     }
 
     pub async fn resolve_dns(&self, hostname: &str) -> Option<IpAddress> {
-        let result = self
-            .stack
-            .dns_query(hostname, embassy_net::dns::DnsQueryType::A)
-            .await;
+        let result = self.stack.dns_query(hostname, DnsQueryType::A).await;
         match result {
             Ok(ips) if !ips.is_empty() => Some(ips[0]),
             _ => {
