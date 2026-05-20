@@ -369,10 +369,10 @@ pub async fn response_handler_task(charger: &'static Charger) {
                                     if let Some(status_end) = payload[status_pos..].find('"') {
                                         let status = &payload[status_pos..status_pos + status_end];
                                         if status == "Accepted" {
-                                            new_input_event = InputEvent::Accepted;
+                                            new_input_event = InputEvent::AuthAccepted;
                                             info!("OCPP: Authorization accepted");
                                         } else {
-                                            new_input_event = InputEvent::Rejected;
+                                            new_input_event = InputEvent::AuthRejected;
                                             info!("OCPP: Authorization rejected with status: {status}");
                                         }
                                     }
@@ -402,8 +402,10 @@ pub async fn response_handler_task(charger: &'static Charger) {
                                     if let Some(status_end) = payload[status_pos..].find('"') {
                                         let status = &payload[status_pos..status_pos + status_end];
                                         if status == "Accepted" {
+                                            new_input_event = InputEvent::TxAccepted;
                                             info!("OCPP: StartTransaction accepted");
                                         } else {
+                                            new_input_event = InputEvent::TxRejected;
                                             warn!("OCPP: StartTransaction rejected");
                                         }
                                     }
