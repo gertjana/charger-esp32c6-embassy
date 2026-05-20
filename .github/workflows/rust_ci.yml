@@ -34,6 +34,7 @@ jobs:
         with:
           target: riscv32imac-unknown-none-elf
           toolchain: stable
+          rust-version: 1.90
           components: rust-src, rustfmt, clippy
       - name: Enable caching
         uses: Swatinem/rust-cache@v2
