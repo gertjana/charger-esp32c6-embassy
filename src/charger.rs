@@ -40,20 +40,15 @@ pub enum OutputEvent {
     ShowRejected,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum ChargerState {
+    #[default]
     Off,
     Faulted,
     Available,
     Preparing,
     Charging,
     Authorizing,
-}
-
-impl Default for ChargerState {
-    fn default() -> Self {
-        Self::Off
-    }
 }
 
 impl ChargerState {
