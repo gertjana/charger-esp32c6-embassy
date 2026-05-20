@@ -81,11 +81,7 @@ impl ChargerState {
             Self::Available => "Available",
             Self::Preparing => "Preparing",
             Self::Charging => "Charging",
-            Self::Authorizing => "Authorizing", //,
-                                                // Self::AuthAccepted => "AuthAccepted",
-                                                // Self::AuthRejected => "AuthRejected",
-                                                // Self::TxAccepted => "TxAccepted",
-                                                // Self::TxRejected => "TxRejected",
+            Self::Authorizing => "Authorizing",
         }
     }
 }
