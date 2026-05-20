@@ -179,6 +179,10 @@ impl Charger {
                 );
                 (ChargerState::Preparing, heapless::Vec::new())
             }
+            (ChargerState::Charging, InputEvent::TxAccepted) => {
+                //Nothing to be done here, it's already charging
+                (ChargerState::Charging, heapless::Vec::new())
+            }
             (ChargerState::Charging, InputEvent::TxRejected) => {
                 let output_events =
                     heapless::Vec::from_slice(&[OutputEvent::RemovePower, OutputEvent::Unlock])
