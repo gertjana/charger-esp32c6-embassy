@@ -338,7 +338,7 @@ async fn charger_led_task(
                 initial_state.as_str()
             );
             let off_color = RGB8::new(0, 0, 0);
-            if let Err(e) = charger_led.write([off_color].into_iter()) {
+            if let Err(e) = charger_led.write([off_color]) {
                 warn!("LED: Failed to turn off LED initially: {e:?}");
             }
         }
@@ -374,7 +374,7 @@ async fn charger_led_task(
                     // Turn off LED for Off state
                     info!("LED: Turning off LED for state: {}", current_state.as_str());
                     let off_color = RGB8::new(0, 0, 0);
-                    if let Err(e) = charger_led.write([off_color].into_iter()) {
+                    if let Err(e) = charger_led.write([off_color]) {
                         warn!("LED: Failed to turn off LED: {e:?}");
                     }
                 }
