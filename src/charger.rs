@@ -25,8 +25,10 @@ pub enum InputEvent {
     InsertCable,
     RemoveCable,
     SwipeDetected,
-    Accepted,
-    Rejected,
+    AuthAccepted,
+    AuthRejected,
+    TxAccepted,
+    TxRejected,
     AuthorizationTimeout,
     None,
 }
@@ -79,7 +81,11 @@ impl ChargerState {
             Self::Available => "Available",
             Self::Preparing => "Preparing",
             Self::Charging => "Charging",
-            Self::Authorizing => "Authorizing",
+            Self::Authorizing => "Authorizing", //,
+                                                // Self::AuthAccepted => "AuthAccepted",
+                                                // Self::AuthRejected => "AuthRejected",
+                                                // Self::TxAccepted => "TxAccepted",
+                                                // Self::TxRejected => "TxRejected",
         }
     }
 }
@@ -159,11 +165,11 @@ impl Charger {
             (ChargerState::Preparing, InputEvent::SwipeDetected) => {
                 (ChargerState::Authorizing, heapless::Vec::new())
             }
-            (ChargerState::Authorizing, InputEvent::Accepted) => (
+            (ChargerState::Authorizing, InputEvent::AuthAccepted) => (
                 ChargerState::Charging,
                 heapless::Vec::from_slice(&[OutputEvent::ApplyPower, OutputEvent::Lock]).unwrap(),
             ),
-            (ChargerState::Authorizing, InputEvent::Rejected) => (
+            (ChargerState::Authorizing, InputEvent::AuthRejected) => (
                 ChargerState::Preparing,
                 heapless::Vec::from_slice(&[OutputEvent::ShowRejected]).unwrap(),
             ),
@@ -172,6 +178,12 @@ impl Charger {
                     "CHGR: Authorization timeout - backend not reachable, returning to Preparing"
                 );
                 (ChargerState::Preparing, heapless::Vec::new())
+            }
+            (ChargerState::Charging, InputEvent::TxRejected) => {
+                let output_events =
+                    heapless::Vec::from_slice(&[OutputEvent::RemovePower, OutputEvent::Unlock])
+                        .unwrap_or_default();
+                (ChargerState::Preparing, output_events)
             }
             (ChargerState::Charging, InputEvent::SwipeDetected) => {
                 let output_events =
@@ -194,6 +206,7 @@ impl Charger {
                 STATE_IN_CHANNEL.clear();
                 (ChargerState::Available, heapless::Vec::new())
             }
+
             _ => {
                 warn!("CHGR: Invalid or unknown transition from {current_state:?} with input {charger_input:?}");
                 (current_state, heapless::Vec::new())
